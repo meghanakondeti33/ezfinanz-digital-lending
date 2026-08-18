@@ -2,8 +2,7 @@
  * Axios-based API client for communicating with the EZFINANZ backend.
  *
  * Base URL is read from the VITE_API_BASE_URL environment variable.
- * Interceptors provide consistent error handling.
- * Business-specific API modules will import this client.
+ * Automatically injects the JWT Bearer token from local storage if present.
  */
 
 import axios from 'axios';
@@ -19,10 +18,12 @@ const apiClient = axios.create({
 });
 
 // ── Request interceptor ──────────────────────────────────────────
-// Future: attach JWT token from auth store
 apiClient.interceptors.request.use(
   (config) => {
-    // Placeholder for auth token injection in Phase 1
+    const token = localStorage.getItem('ezfinanz_token');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => Promise.reject(error),
@@ -34,9 +35,9 @@ apiClient.interceptors.response.use(
   (error) => {
     // Normalize error shape for consumers
     if (error.response) {
-      // Server responded with an error status
       const message =
         error.response.data?.error?.message ||
+        error.response.data?.detail ||
         error.response.statusText ||
         'An unexpected error occurred';
 
@@ -44,7 +45,6 @@ apiClient.interceptors.response.use(
     }
 
     if (error.request) {
-      // Request made but no response received
       return Promise.reject(new Error('Unable to reach the server. Please check your connection.'));
     }
 

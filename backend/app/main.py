@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.exceptions import AppException, app_exception_handler
 from app.api.health import router as health_router
+from app.api.auth import router as auth_router
+from app.api.test_rbac import customer_router, admin_router
 
 
 def create_app() -> FastAPI:
@@ -44,6 +46,9 @@ def create_app() -> FastAPI:
     # Routers
     # ---------------------
     app.include_router(health_router, prefix="/api/v1", tags=["health"])
+    app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
+    app.include_router(customer_router, prefix="/api/v1", tags=["customer-test"])
+    app.include_router(admin_router, prefix="/api/v1", tags=["admin-test"])
 
     return app
 

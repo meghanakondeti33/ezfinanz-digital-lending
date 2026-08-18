@@ -67,7 +67,7 @@ def test_unique_email_constraint(db_session: Session):
     """Verify duplicate email violates unique constraint."""
     user1 = User(
         email="test_unique@example.com",
-        phone="9876543210",
+        phone="9870000001",
         password_hash="hash_placeholder_1",
         role=UserRole.CUSTOMER,
     )
@@ -76,7 +76,7 @@ def test_unique_email_constraint(db_session: Session):
 
     user2 = User(
         email="test_unique@example.com",  # Duplicate email
-        phone="9876543211",
+        phone="9870000002",
         password_hash="hash_placeholder_2",
         role=UserRole.CUSTOMER,
     )

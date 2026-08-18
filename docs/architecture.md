@@ -21,13 +21,16 @@ The platform is designed to be production-minded: it enforces business rules ser
 - **Pydantic** — request/response validation and serialization
 - **SQLAlchemy 2.x** — modern type-annotated ORM with declarative models
 - **Alembic** — database migrations for reproducible schema versioning
+- **Argon2id (`argon2-cffi`)** — memory-hard password hashing
+- **PyJWT** — cryptographic JSON Web Token generation and validation
 
 ### Database
 - **PostgreSQL 18.x** — the only supported database (no SQLite fallback)
 
-### Authentication (Phase 2)
-- **JWT** tokens with secure password hashing (bcrypt)
-- **Role-based access control** (Customer, Admin)
+### Authentication
+- **Argon2id** password hashing
+- **JWT** short-lived access tokens
+- **Role-based access control** (`CUSTOMER`, `ADMIN`) enforced via FastAPI dependencies
 
 ## 3. High-Level Architecture
 
@@ -55,17 +58,17 @@ The frontend and backend are fully separate applications:
 - **Frontend** runs on port `5173` (Vite dev server) and makes REST API calls.
 - **Backend** runs on port `8000` (Uvicorn) and exposes a JSON API under `/api/v1`.
 - CORS is configured per-environment to allow frontend→backend communication.
-- The frontend **never** decides application state transitions. It requests them, and the backend validates and executes them.
-- Authentication tokens (JWT) will be sent as HTTP headers.
+- The frontend **never** decides application state transitions or user roles.
+- Authentication tokens (JWT) are sent in the `Authorization: Bearer <token>` HTTP header.
 
 ## 5. Database Choice & Rationale
 
 **PostgreSQL** is the only supported database.
 
 Reasons:
-- **Production parity**: Avoids silent behavior divergences between SQLite in dev and Postgres in production (e.g. enum types, JSONB indexing, concurrency semantics).
+- **Production parity**: Avoids silent behavior divergences between SQLite in dev and Postgres in production.
 - **Proper constraint enforcement**: Strict foreign keys, composite unique constraints, check constraints, and custom PostgreSQL ENUM types.
-- **ACID transactions**: Ensures financial record integrity during multi-step updates (e.g. offer acceptance + term generation + audit log creation in a single transaction).
+- **ACID transactions**: Ensures financial record integrity during multi-step updates.
 - **JSONB support**: Enables rich semi-structured audit trails and eligibility calculation rationale storage.
 - **Numeric precision**: Native arbitrary-precision decimal support (`NUMERIC(p, s)`).
 
@@ -152,40 +155,82 @@ User (1)
             └── (1..*) AuditLog ───────────── (0..1) User [actor_id]
 ```
 
-### 9.3 SQLAlchemy 2.x Architecture
+---
 
-The ORM utilizes modern SQLAlchemy 2.x patterns:
-- Declarative models inheriting from `DeclarativeBase` with typed `Mapped[...]` and `mapped_column(...)`.
-- UUIDs generated server/application-side as standard Python `uuid.UUID` mapping to PostgreSQL native `UUID`.
-- Clean session lifecycle via FastAPI `Depends(get_db)` yielding pooled sessions.
-- Explicit cascade definitions (`cascade="all, delete-orphan"`) on parent-child entity relationships.
+## 10. Authentication & Role-Based Access Control Architecture (Phase 2)
 
-### 9.4 Alembic Migration Strategy
+### 10.1 Authentication Flow
 
-- Migrations manage 100% of schema DDL — manual table creation is strictly prohibited.
-- `alembic/env.py` dynamically loads the database connection string from application settings and imports all models to populate `target_metadata`.
-- All migrations are bi-directional: `upgrade()` creates objects and `downgrade()` cleanly removes them in reverse topological order, including PostgreSQL custom ENUM types.
+```
+[ Customer Registration ]
+  Email + Phone + Password
+           ↓ (Pydantic validation & normalization)
+  Check Uniqueness (409 Conflict if duplicate)
+           ↓
+  Argon2id Hashing
+           ↓
+  Save User (role = CUSTOMER, is_active = True)
+           ↓
+  Return Safe UserResponse (No password_hash)
 
-### 9.5 Architectural & Design Rationale
+[ Customer / Admin Login ]
+  Email + Password
+           ↓
+  Query User by Email
+           ↓
+  Argon2id Verify (Generic 401 on failure)
+           ↓
+  Verify is_active (401 if deactivated)
+           ↓
+  Issue Signed JWT Access Token (sub=user.id, role=user.role, exp=30min)
+           ↓
+  Return TokenResponse (access_token, token_type, expires_in)
+```
 
-1. **UUID Primary Keys**: 
-   - Eliminates enumeration attacks on customer loan applications.
-   - Allows ID generation prior to database insert.
-   - Avoids ID collision risks across distributed systems.
+### 10.2 Password Hashing (Argon2id)
+- Memory-hard **Argon2id** password hashing using `argon2-cffi`.
+- Centralized password policy enforced across registration and CLI admin creation:
+  - 8 to 128 characters
+  - At least 1 uppercase letter
+  - At least 1 lowercase letter
+  - At least 1 digit
+  - At least 1 special character
+- Plaintext passwords and hashes are never logged, never returned in API models, and never included in JWT payloads.
 
-2. **Arbitrary-Precision Numerics for Financial Fields**:
-   - `NUMERIC(15, 2)` for amounts (principal, EMI, processing fees, gst, repayments).
-   - `NUMERIC(7, 4)` for rates/ratios (IRR, DTI ratio).
-   - Floating-point arithmetic (`float`/`REAL`/`DOUBLE`) is strictly prohibited to prevent IEEE 754 precision loss in financial calculations.
+### 10.3 JWT Architecture & Claims
+- Signed using HMAC-SHA256 (`HS256`) with secret loaded from `JWT_SECRET_KEY` environment variable.
+- Minimal payload:
+  ```json
+  {
+    "sub": "414b4edf-0682-4135-94e4-2d388bcc7273",
+    "role": "ADMIN",
+    "iat": 1771334000,
+    "exp": 1771335800
+  }
+  ```
+- Short-lived default expiration: 30 minutes.
 
-3. **Storage Keys vs. Binary Data**:
-   - Binary assets (KYC document scans, selfie photos) are never stored in the database.
-   - Only secure storage references (`storage_key`) are saved, allowing storage backend migration (local disk to S3/Cloud Storage) without database schema changes.
+### 10.4 Role-Based Access Control (RBAC)
+- Enforced server-side via FastAPI dependencies:
+  - `get_current_user`: extracts bearer token, validates signature/expiration, verifies user exists and `is_active` in PostgreSQL.
+  - `require_role(UserRole.ADMIN)` / `require_role(UserRole.CUSTOMER)`: verifies user role matches requirement; raises `403 Forbidden` if insufficient permissions.
 
-4. **Sensitive Data Protection**:
-   - Government identification numbers (PAN, Aadhaar) and bank account numbers are stored in hashed/protected representations (`id_number_hash`, `account_number_hash`).
-   - Only non-sensitive display fragments (e.g. `account_number_last4`) are stored in plaintext for user interface rendering.
-   - Passwords use `password_hash` with secure hashing algorithms.
+| Endpoint | Authentication | Allowed Roles | Behavior for Unauthorized |
+|---|---|---|---|
+| `POST /api/v1/auth/register` | None (Public) | Anyone | N/A (Always creates `CUSTOMER`) |
+| `POST /api/v1/auth/login` | None (Public) | Anyone | Generic 401 Unauthorized |
+| `GET /api/v1/auth/me` | Bearer JWT | `CUSTOMER`, `ADMIN` | 401 Unauthorized |
+| `GET /api/v1/customer/test` | Bearer JWT | `CUSTOMER` | 403 Forbidden if `ADMIN` |
+| `GET /api/v1/admin/test` | Bearer JWT | `ADMIN` | 403 Forbidden if `CUSTOMER` |
 
-5. **Immutable Audit Logging**:
-   - The `audit_logs` table records every critical state mutation, administrative action, and transition with timestamp, actor reference, previous status, next status, and structured JSONB payload for compliance and dispute resolution.
+### 10.5 Admin Creation Mechanism
+- Public registration strictly forbids role specification.
+- Administrators are created exclusively through the secure CLI utility:
+  ```bash
+  python -m app.scripts.create_admin
+  ```
+  Masks password input via `getpass` and validates all security constraints before database insertion.
+
+### 10.6 Frontend Token Strategy & Security Trade-Offs
+- Tokens stored in `localStorage` for assessment simplicity and injected into all outgoing Axios requests via request interceptor.
+- **Security Trade-Off**: LocalStorage is vulnerable to XSS; in production, this should be paired with Content Security Policy (CSP) and transitioned to HttpOnly SameSite cookies with short-lived tokens and refresh rotation.
