@@ -62,6 +62,9 @@ class LoanApplication(Base):
         default=ApplicationStatus.DRAFT,
         index=True,
     )
+    purpose: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     monthly_income: Mapped[None] = mapped_column(
         Numeric(15, 2), nullable=True
     )
@@ -71,14 +74,20 @@ class LoanApplication(Base):
     existing_debt: Mapped[None] = mapped_column(
         Numeric(15, 2), nullable=True
     )
-    credit_score: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
+    employment_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
     )
     employer_name: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
     designation: Mapped[str | None] = mapped_column(
         String(255), nullable=True
+    )
+    requested_tenure_months: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    credit_score: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
     )
     created_at = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()

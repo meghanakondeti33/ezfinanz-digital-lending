@@ -32,6 +32,8 @@ The platform is designed to be production-minded: it enforces business rules ser
 - **JWT** short-lived access tokens
 - **Role-based access control** (`CUSTOMER`, `ADMIN`) enforced via FastAPI dependencies
 
+---
+
 ## 3. High-Level Architecture
 
 ```
@@ -105,19 +107,20 @@ Key principles:
 | Module | Responsibility |
 |--------|---------------|
 | **auth** | Signup, login, JWT issuance, password hashing, role-based access |
+| **loans** | Loan application lifecycle, draft creation, updates, submission, ownership |
 | **verification** | Email OTP, phone OTP (simulated) |
 | **kyc** | KYC document upload, verification (simulated) |
-| **loan** | Loan details capture, eligibility check, EMI calculation, offer selection |
+| **eligibility** | Credit score check, DTI evaluation, eligibility logic |
+| **offers** | Pre-approved loan offers, EMI/IRR calculations, terms selection |
 | **bank** | Bank account details, verification (simulated) |
 | **declaration** | Terms acceptance, digital declaration |
 | **selfie** | Photo/selfie upload, verification (simulated) |
-| **application** | State machine, application lifecycle, status tracking |
 | **admin** | Dashboard, application review, approve/reject, disbursement |
 | **storage** | File storage abstraction (local filesystem now, S3-ready interface) |
 
 ---
 
-## 9. Database Architecture (Phase 1)
+## 9. Database Architecture (Phase 1 & 3)
 
 ### 9.1 Entity Overview (13 Tables)
 
@@ -126,7 +129,7 @@ Key principles:
 | `users` | Customer and admin identity | UUID PK, unique email, unique phone, password_hash, role (`CUSTOMER`/`ADMIN`), is_active |
 | `user_verifications` | Email/phone verification state | FK→`users.id`, type (`EMAIL`/`PHONE`), status (`PENDING`/`VERIFIED`/`EXPIRED`/`FAILED`), otp_hash, attempt_count |
 | `kyc_details` | KYC demographic info | FK→`users.id`, full_name, DOB, gender, address fields, id_type, sensitive id_number_hash, document_storage_key |
-| `loan_applications` | Central domain entity | UUID PK, unique human-readable `application_number`, FK→`users.id`, `status` (state machine enum), Numeric financials |
+| `loan_applications` | Central domain entity | UUID PK, unique human-readable `application_number`, FK→`users.id`, `status`, `purpose`, `requested_amount`, `monthly_income`, `employment_type`, `employer_name`, `existing_debt`, `requested_tenure_months`, `submitted_at` |
 | `eligibility_checks` | Historical eligibility evaluations | FK→`loan_applications.id`, Numeric score/dti_ratio, status (`ELIGIBLE`/`INELIGIBLE`/`MANUAL_REVIEW`), JSONB reasons |
 | `loan_offers` | Pre-approved / calculated loan offers | FK→`loan_applications.id`, Numeric principal/interest_rate/processing_fee/gst, status (`GENERATED`/`SELECTED`/`EXPIRED`) |
 | `loan_terms` | Selected repayment terms & schedule | FK→`loan_offers.id`, tenure_months, Numeric emi/total_interest/total_repayment/net_disbursement/irr |
@@ -187,50 +190,59 @@ User (1)
   Return TokenResponse (access_token, token_type, expires_in)
 ```
 
-### 10.2 Password Hashing (Argon2id)
-- Memory-hard **Argon2id** password hashing using `argon2-cffi`.
-- Centralized password policy enforced across registration and CLI admin creation:
-  - 8 to 128 characters
-  - At least 1 uppercase letter
-  - At least 1 lowercase letter
-  - At least 1 digit
-  - At least 1 special character
-- Plaintext passwords and hashes are never logged, never returned in API models, and never included in JWT payloads.
+---
 
-### 10.3 JWT Architecture & Claims
-- Signed using HMAC-SHA256 (`HS256`) with secret loaded from `JWT_SECRET_KEY` environment variable.
-- Minimal payload:
-  ```json
-  {
-    "sub": "414b4edf-0682-4135-94e4-2d388bcc7273",
-    "role": "ADMIN",
-    "iat": 1771334000,
-    "exp": 1771335800
-  }
-  ```
-- Short-lived default expiration: 30 minutes.
+## 11. Core Loan Application Workflow & State Machine (Phase 3)
 
-### 10.4 Role-Based Access Control (RBAC)
-- Enforced server-side via FastAPI dependencies:
-  - `get_current_user`: extracts bearer token, validates signature/expiration, verifies user exists and `is_active` in PostgreSQL.
-  - `require_role(UserRole.ADMIN)` / `require_role(UserRole.CUSTOMER)`: verifies user role matches requirement; raises `403 Forbidden` if insufficient permissions.
+### 11.1 Lifecycle & State Transitions
 
-| Endpoint | Authentication | Allowed Roles | Behavior for Unauthorized |
+```
+                    ┌─────────────────────────┐
+                    │      CREATE DRAFT       │
+                    │  POST /loans/applications│
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+        ┌──────────►│          DRAFT          │◄──────────┐
+        │           │ (Editable & Resumeable) │           │
+        │           └────────────┬────────────┘           │
+        │                        │                        │
+  PATCH (Update Draft)           │ POST /submit           │
+        │                        │ (Completeness Check)   │
+        └────────────────────────┘                        │
+                                 │                        │
+                                 ▼                        │
+                    ┌─────────────────────────┐           │
+                    │        SUBMITTED        │           │
+                    │ (Immutable / Read-Only) │           │
+                    └────────────┬────────────┘           │
+                                 │                        │
+                                 │ PATCH attempt          │
+                                 ▼                        │
+                         409 CONFLICT ────────────────────┘
+```
+
+### 11.2 Ownership & Access Control Rules
+
+1. **Strict Ownership Scoping**:
+   - The user identity is extracted purely from the verified JWT `sub` claim.
+   - All queries filter by `user_id == current_user.id`.
+   - Accessing another user's loan application returns `404 Not Found` (never leaking existence).
+2. **State-Enforced Immutability**:
+   - `DRAFT` applications can be modified via `PATCH /api/v1/loans/applications/{id}`.
+   - Once submitted (`status = SUBMITTED`), any modification attempt is rejected with `409 Conflict`.
+3. **Application Number Generation**:
+   - Backend automatically assigns formatted, sequential, collision-resistant application numbers: `EZF-YYYY-000001`.
+4. **Idempotent Submission**:
+   - Calling `POST /submit` on an already submitted application returns the submitted application without throwing errors or corrupting state.
+
+### 11.3 Loan Application Endpoints
+
+| Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST /api/v1/auth/register` | None (Public) | Anyone | N/A (Always creates `CUSTOMER`) |
-| `POST /api/v1/auth/login` | None (Public) | Anyone | Generic 401 Unauthorized |
-| `GET /api/v1/auth/me` | Bearer JWT | `CUSTOMER`, `ADMIN` | 401 Unauthorized |
-| `GET /api/v1/customer/test` | Bearer JWT | `CUSTOMER` | 403 Forbidden if `ADMIN` |
-| `GET /api/v1/admin/test` | Bearer JWT | `ADMIN` | 403 Forbidden if `CUSTOMER` |
-
-### 10.5 Admin Creation Mechanism
-- Public registration strictly forbids role specification.
-- Administrators are created exclusively through the secure CLI utility:
-  ```bash
-  python -m app.scripts.create_admin
-  ```
-  Masks password input via `getpass` and validates all security constraints before database insertion.
-
-### 10.6 Frontend Token Strategy & Security Trade-Offs
-- Tokens stored in `localStorage` for assessment simplicity and injected into all outgoing Axios requests via request interceptor.
-- **Security Trade-Off**: LocalStorage is vulnerable to XSS; in production, this should be paired with Content Security Policy (CSP) and transitioned to HttpOnly SameSite cookies with short-lived tokens and refresh rotation.
+| `POST` | `/api/v1/loans/applications` | Customer | Creates a new draft application with generated application number |
+| `GET` | `/api/v1/loans/applications` | Customer | Lists all applications belonging to the customer (newest first) |
+| `GET` | `/api/v1/loans/applications/{id}` | Customer | Retrieves single application by ID (strict ownership check) |
+| `PATCH` | `/api/v1/loans/applications/{id}` | Customer | Updates draft application (returns 409 if submitted) |
+| `POST` | `/api/v1/loans/applications/{id}/submit` | Customer | Validates required fields and transitions to `SUBMITTED` |

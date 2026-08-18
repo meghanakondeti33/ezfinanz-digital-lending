@@ -9,7 +9,7 @@ A production-minded personal loan application built with React, FastAPI, SQLAlch
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, Axios |
 | Backend | Python 3.11+, FastAPI, Pydantic, SQLAlchemy 2.x, Alembic, Argon2id (`argon2-cffi`), PyJWT |
 | Database | PostgreSQL 18.x |
-| Architecture | Modular Monolith with Server-Enforced RBAC & State Machine |
+| Architecture | Modular Monolith with Server-Enforced State Machine & RBAC |
 
 ## Project Structure
 
@@ -19,18 +19,24 @@ EZFINANZ/
 │   └── src/
 │       ├── context/           # AuthContext (state & session management)
 │       ├── components/        # ProtectedRoute
-│       ├── pages/             # Landing, Login, Register, Dashboard
-│       └── lib/               # api-client.ts (Bearer token interceptor)
+│       ├── pages/             # Landing, Login, Register, Dashboard, LoanApplicationForm
+│       ├── types/             # loan.ts, user.ts
+│       └── lib/               # api-client.ts, loans-api.ts
 ├── backend/                   # FastAPI application
 │   ├── alembic/               # Alembic database migrations
+│   │   └── versions/          # 0001_initial_schema.py, 0002_add_loan_application_fields.py
 │   ├── app/
-│   │   ├── api/               # API routers (health, auth, customer/admin test)
-│   │   ├── core/              # Config, database engine, security (Argon2id/JWT), auth (RBAC)
+│   │   ├── api/               # health, auth, loans, test_rbac
+│   │   ├── core/              # config, database, security, auth
 │   │   ├── models/            # SQLAlchemy 2.x domain models (13 tables)
-│   │   ├── schemas/           # Pydantic schemas (auth, user)
-│   │   ├── scripts/           # create_admin.py (Admin CLI tool)
-│   │   └── services/          # auth_service.py
-│   └── tests/                 # Comprehensive test suite (27 tests)
+│   │   ├── schemas/           # auth, user, loan
+│   │   ├── scripts/           # create_admin.py
+│   │   └── services/          # auth_service.py, loan_service.py
+│   └── tests/                 # Comprehensive test suite (38 tests)
+│       ├── test_auth.py
+│       ├── test_database.py
+│       ├── test_loans.py
+│       └── test_migrations.py
 ├── docs/                      # Architecture & design documentation
 │   └── architecture.md
 ├── .gitignore
@@ -67,7 +73,7 @@ EZFINANZ/
    ```bash
    cp .env.example .env
    ```
-   Edit `.env` and set your credentials:
+   Ensure `.env` contains:
    ```ini
    DATABASE_URL=postgresql+psycopg2://postgres:YOUR_PASSWORD@localhost:5432/ezfinanz
    JWT_SECRET_KEY=your-secure-random-secret-key
@@ -80,20 +86,14 @@ EZFINANZ/
    alembic upgrade head
    ```
 
-5. **Create an Administrator Account**:
-   ```bash
-   python -m app.scripts.create_admin
-   ```
-   *(Prompts securely for email, phone, and password with masking)*
-
-6. **Start the Backend API Server**:
+5. **Start the Backend API Server**:
    ```bash
    uvicorn app.main:app --reload --port 8000
    ```
    - OpenAPI Documentation: `http://localhost:8000/docs`
    - Health Check: `http://localhost:8000/api/v1/health`
 
-7. **Run Test Suite**:
+6. **Run Test Suite**:
    ```bash
    pytest tests/ -v
    ```
@@ -113,7 +113,7 @@ EZFINANZ/
    npm run dev
    ```
    - App URL: `http://localhost:5173`
-   - Pages: `/` (Landing), `/login`, `/register`, `/dashboard` (Protected)
+   - Pages: `/` (Landing), `/login`, `/register`, `/dashboard`, `/loans/new`, `/loans/:id`
 
 3. **Build for Production**:
    ```bash
@@ -122,23 +122,46 @@ EZFINANZ/
 
 ---
 
-## Authentication & RBAC Endpoints
+## API Endpoints
 
+### Health & Auth Endpoints
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
 | `GET` | `/api/v1/health` | Public | System liveness probe |
-| `POST` | `/api/v1/auth/register` | Public | Customer registration (strictly role `CUSTOMER`) |
+| `POST` | `/api/v1/auth/register` | Public | Customer registration |
 | `POST` | `/api/v1/auth/login` | Public | Authenticate and receive JWT access token |
-| `GET` | `/api/v1/auth/me` | Authenticated | Retrieve current user profile (excludes password_hash) |
-| `GET` | `/api/v1/customer/test` | Customer Only | Test endpoint requiring `CUSTOMER` role |
-| `GET` | `/api/v1/admin/test` | Admin Only | Test endpoint requiring `ADMIN` role |
+| `GET` | `/api/v1/auth/me` | Authenticated | Retrieve current user profile |
+
+### Loan Application Endpoints (Phase 3)
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/loans/applications` | Customer | Create loan application draft (`DRAFT`) |
+| `GET` | `/api/v1/loans/applications` | Customer | List customer applications (newest first) |
+| `GET` | `/api/v1/loans/applications/{id}` | Customer | Get application by ID (strict ownership) |
+| `PATCH` | `/api/v1/loans/applications/{id}` | Customer | Update draft details (409 on submitted) |
+| `POST` | `/api/v1/loans/applications/{id}/submit` | Customer | Validate completeness & submit application (`SUBMITTED`) |
+
+---
+
+## Manual Demo Flow
+
+1. Register or login as a customer (`/register` or `/login`).
+2. Open Dashboard (`/dashboard`) and click **"Apply for Personal Loan"** or **"Start New Loan Application"**.
+3. Fill in the loan details:
+   - **Requested Amount**: `500000`
+   - **Purpose**: `Home renovation`
+   - **Monthly Income**: `60000`
+   - **Employment Type**: `SALARIED`
+   - **Employer**: `Example Technologies`
+   - **Existing Debt**: `10000`
+   - **Tenure**: `36 Months`
+4. Click **"Save Draft"** -> Notice status is `DRAFT` and application number is generated (`EZF-2026-000001`).
+5. Refresh browser -> Application state persists from PostgreSQL.
+6. Click **"Submit Application"** -> Status transitions to `SUBMITTED` with `submitted_at` timestamp.
+7. Form becomes locked / read-only and any modification attempts return `409 Conflict`.
 
 ---
 
 ## Documentation
 
-- [Architecture Document](docs/architecture.md) — Comprehensive technical specification, ER diagram, Argon2id & JWT architecture, RBAC model, and security rationales.
-
-## License
-
-This project is part of a technical assessment and is not licensed for public use.
+- [Architecture Document](docs/architecture.md) — Comprehensive technical specification, ER diagram, Argon2id & JWT architecture, RBAC model, state machine, and security rationales.
