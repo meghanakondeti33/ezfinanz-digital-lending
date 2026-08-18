@@ -1,23 +1,31 @@
 # EZFINANZ — Personal Loan Application Platform
 
-A production-minded personal loan application built with React, FastAPI, and PostgreSQL.
+A production-minded personal loan application built with React, FastAPI, SQLAlchemy 2.x, Alembic, and PostgreSQL 18.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query |
-| Backend | Python, FastAPI, Pydantic, SQLAlchemy, Alembic |
-| Database | PostgreSQL |
-| Auth | JWT, bcrypt, role-based access control |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, Axios |
+| Backend | Python 3.11+, FastAPI, Pydantic, SQLAlchemy 2.x, Alembic |
+| Database | PostgreSQL 18.x |
+| Architecture | Modular Monolith with Backend-Enforced State Machine |
 
 ## Project Structure
 
 ```
 EZFINANZ/
-├── frontend/          # React + Vite application
-├── backend/           # FastAPI application
-├── docs/              # Architecture & design documentation
+├── frontend/                  # React + Vite application
+├── backend/                   # FastAPI application
+│   ├── alembic/               # Alembic database migrations
+│   │   └── versions/          # Migration version scripts
+│   ├── app/
+│   │   ├── api/               # API routes (health, etc.)
+│   │   ├── core/              # Config, database engine, exceptions
+│   │   └── models/            # SQLAlchemy 2.x domain models (13 tables)
+│   └── tests/                 # Pytest test suite
+├── docs/                      # Architecture & design documentation
+│   └── architecture.md
 ├── .gitignore
 └── README.md
 ```
@@ -28,49 +36,91 @@ EZFINANZ/
 
 - Python 3.11+
 - Node.js 20+
-- PostgreSQL 15+
+- PostgreSQL 18.x (running locally on port 5432 with database `ezfinanz`)
 
-### Backend
+---
 
-```bash
-cd backend
+### Backend Setup
 
-# Copy environment config
-cp .env.example .env
-# Edit .env with your PostgreSQL credentials
+1. **Activate / Create Virtual Environment**:
+   ```bash
+   cd backend
+   python -m venv .venv
+   # Windows:
+   .venv\Scripts\activate
+   # Linux/macOS:
+   source .venv/bin/activate
+   ```
 
-# Install dependencies
-pip install -r requirements.txt
+2. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# Start the dev server
-uvicorn app.main:app --reload --port 8000
-```
+3. **Configure Environment Variables**:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` and set your local PostgreSQL credentials:
+   ```ini
+   DATABASE_URL=postgresql+psycopg2://postgres:YOUR_PASSWORD@localhost:5432/ezfinanz
+   ```
 
-The API will be available at `http://localhost:8000`.
-Interactive docs at `http://localhost:8000/docs`.
+4. **Run Database Migrations**:
+   ```bash
+   # Apply all migrations to latest version
+   alembic upgrade head
 
-### Frontend
+   # Rollback one migration (if needed)
+   alembic downgrade -1
+   ```
 
-```bash
-cd frontend
+5. **Start the Backend API Server**:
+   ```bash
+   uvicorn app.main:app --reload --port 8000
+   ```
+   - API Base: `http://localhost:8000`
+   - OpenAPI Documentation: `http://localhost:8000/docs`
+   - Health Check: `http://localhost:8000/api/v1/health`
 
-# Copy environment config
-cp .env.example .env
+6. **Run Backend Tests**:
+   ```bash
+   pytest tests/ -v
+   ```
 
-# Install dependencies
-npm install
+---
 
-# Start the dev server
-npm run dev
-```
+### Frontend Setup
 
-The app will be available at `http://localhost:5173`.
+1. **Install Dependencies**:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. **Configure Environment**:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Start Frontend Dev Server**:
+   ```bash
+   npm run dev
+   ```
+   - App URL: `http://localhost:5173`
+
+4. **Build for Production**:
+   ```bash
+   npm run build
+   ```
+
+---
 
 ## API Endpoints
 
 ### Health Check
 
-```
+```http
 GET /api/v1/health
 ```
 
@@ -83,7 +133,7 @@ Response:
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — System design, tech choices, state machine concept
+- [Architecture Document](docs/architecture.md) — System design, 13 database entities, ER diagram, state machine lifecycle, and security principles.
 
 ## License
 
