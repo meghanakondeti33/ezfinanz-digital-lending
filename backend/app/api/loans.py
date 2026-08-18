@@ -2,22 +2,25 @@
 Loan Application API Endpoints.
 
 Provides authenticated customer endpoints to create, list, view, update,
-and submit personal loan applications.
+submit personal loan applications, run eligibility assessments, and select loan offers.
 """
 
 import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user, require_role
+from app.core.auth import require_role
 from app.core.database import get_db
 from app.models.user import User, UserRole
+from app.schemas.eligibility import EligibilityCheckResponse
 from app.schemas.loan import (
     LoanApplicationCreate,
     LoanApplicationListResponse,
     LoanApplicationResponse,
     LoanApplicationUpdate,
 )
+from app.schemas.offer import LoanOfferListResponse, LoanOfferResponse
+from app.services.eligibility_service import run_and_persist_eligibility
 from app.services.loan_service import (
     create_loan_application,
     get_loan_application,
@@ -25,6 +28,7 @@ from app.services.loan_service import (
     submit_loan_application,
     update_loan_draft,
 )
+from app.services.offer_service import get_application_offers, select_application_offer
 
 router = APIRouter(prefix="/loans/applications", tags=["loans"])
 
@@ -126,3 +130,67 @@ def submit_application(
     """
     application = submit_loan_application(db, current_user, application_id)
     return LoanApplicationResponse.model_validate(application)
+
+
+# ==============================================================================
+# Phase 4: Eligibility & Loan Offers
+# ==============================================================================
+
+@router.post(
+    "/{application_id}/eligibility",
+    response_model=EligibilityCheckResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Run deterministic eligibility assessment",
+)
+def check_eligibility(
+    application_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+) -> EligibilityCheckResponse:
+    """
+    Evaluate eligibility for a SUBMITTED loan application using deterministic rules.
+    Generates explainable decision rationale and, if eligible, multi-tier loan offers.
+    """
+    check = run_and_persist_eligibility(db, current_user, application_id)
+    return EligibilityCheckResponse.model_validate(check)
+
+
+@router.get(
+    "/{application_id}/offers",
+    response_model=LoanOfferListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get loan offers for application",
+)
+def list_offers(
+    application_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+) -> LoanOfferListResponse:
+    """
+    Retrieve generated loan offers with complete financial and repayment schedules.
+    """
+    offers = get_application_offers(db, current_user, application_id)
+    return LoanOfferListResponse(
+        application_id=application_id,
+        offers=[LoanOfferResponse.model_validate(o) for o in offers],
+    )
+
+
+@router.post(
+    "/{application_id}/offers/{offer_id}/select",
+    response_model=LoanOfferResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Select a specific loan offer",
+)
+def select_offer(
+    application_id: uuid.UUID,
+    offer_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+) -> LoanOfferResponse:
+    """
+    Select an offer for the application.
+    Marks chosen offer as SELECTED, other offers as EXPIRED, and transitions status to OFFER_SELECTED.
+    """
+    selected = select_application_offer(db, current_user, application_id, offer_id)
+    return LoanOfferResponse.model_validate(selected)

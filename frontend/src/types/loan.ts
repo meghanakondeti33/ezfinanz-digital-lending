@@ -13,6 +13,46 @@ export type ApplicationStatus =
 
 export type EmploymentType = 'SALARIED' | 'SELF_EMPLOYED' | 'BUSINESS' | 'OTHER';
 
+export type EligibilityStatus = 'ELIGIBLE' | 'INELIGIBLE' | 'MANUAL_REVIEW';
+
+export type OfferStatus = 'GENERATED' | 'SELECTED' | 'EXPIRED' | 'REJECTED';
+
+export type EligibilityCheck = {
+  id: string;
+  application_id: string;
+  status: EligibilityStatus;
+  score: number | string | null;
+  dti_ratio: number | string | null;
+  reasons: string[] | null;
+  calculated_at: string;
+};
+
+export type LoanTerm = {
+  id: string;
+  offer_id: string;
+  tenure_months: number;
+  emi: number | string;
+  total_interest: number | string;
+  total_repayment: number | string;
+  total_charges: number | string;
+  net_disbursement: number | string;
+  irr: number | string | null;
+  selected_at: string;
+};
+
+export type LoanOffer = {
+  id: string;
+  application_id: string;
+  principal: number | string;
+  interest_rate: number | string;
+  processing_fee: number | string;
+  gst: number | string;
+  other_charges: number | string;
+  status: OfferStatus;
+  terms: LoanTerm[];
+  created_at: string;
+};
+
 export type LoanApplication = {
   id: string;
   application_number: string;

@@ -9,7 +9,7 @@ A production-minded personal loan application built with React, FastAPI, SQLAlch
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query, Axios |
 | Backend | Python 3.11+, FastAPI, Pydantic, SQLAlchemy 2.x, Alembic, Argon2id (`argon2-cffi`), PyJWT |
 | Database | PostgreSQL 18.x |
-| Architecture | Modular Monolith with Server-Enforced State Machine & RBAC |
+| Architecture | Modular Monolith with Server-Enforced State Machine & Deterministic Underwriting |
 
 ## Project Structure
 
@@ -29,13 +29,14 @@ EZFINANZ/
 │   │   ├── api/               # health, auth, loans, test_rbac
 │   │   ├── core/              # config, database, security, auth
 │   │   ├── models/            # SQLAlchemy 2.x domain models (13 tables)
-│   │   ├── schemas/           # auth, user, loan
+│   │   ├── schemas/           # auth, user, loan, eligibility, offer
 │   │   ├── scripts/           # create_admin.py
-│   │   └── services/          # auth_service.py, loan_service.py
-│   └── tests/                 # Comprehensive test suite (38 tests)
+│   │   └── services/          # auth_service.py, loan_service.py, financial_service.py, eligibility_service.py, offer_service.py
+│   └── tests/                 # Comprehensive test suite (46 tests)
 │       ├── test_auth.py
 │       ├── test_database.py
 │       ├── test_loans.py
+│       ├── test_eligibility_and_offers.py
 │       └── test_migrations.py
 ├── docs/                      # Architecture & design documentation
 │   └── architecture.md
@@ -132,7 +133,7 @@ EZFINANZ/
 | `POST` | `/api/v1/auth/login` | Public | Authenticate and receive JWT access token |
 | `GET` | `/api/v1/auth/me` | Authenticated | Retrieve current user profile |
 
-### Loan Application Endpoints (Phase 3)
+### Loan & Eligibility Endpoints (Phase 3 & 4)
 | Method | Endpoint | Access | Purpose |
 |---|---|---|---|
 | `POST` | `/api/v1/loans/applications` | Customer | Create loan application draft (`DRAFT`) |
@@ -140,28 +141,30 @@ EZFINANZ/
 | `GET` | `/api/v1/loans/applications/{id}` | Customer | Get application by ID (strict ownership) |
 | `PATCH` | `/api/v1/loans/applications/{id}` | Customer | Update draft details (409 on submitted) |
 | `POST` | `/api/v1/loans/applications/{id}/submit` | Customer | Validate completeness & submit application (`SUBMITTED`) |
+| `POST` | `/api/v1/loans/applications/{id}/eligibility` | Customer | Run eligibility check & generate offers (`ELIGIBILITY_CHECKED`) |
+| `GET` | `/api/v1/loans/applications/{id}/offers` | Customer | List available loan offer packages with terms |
+| `POST` | `/api/v1/loans/applications/{id}/offers/{offer_id}/select` | Customer | Select offer & lock terms (`OFFER_SELECTED`) |
 
 ---
 
 ## Manual Demo Flow
 
 1. Register or login as a customer (`/register` or `/login`).
-2. Open Dashboard (`/dashboard`) and click **"Apply for Personal Loan"** or **"Start New Loan Application"**.
-3. Fill in the loan details:
-   - **Requested Amount**: `500000`
-   - **Purpose**: `Home renovation`
-   - **Monthly Income**: `60000`
-   - **Employment Type**: `SALARIED`
-   - **Employer**: `Example Technologies`
-   - **Existing Debt**: `10000`
-   - **Tenure**: `36 Months`
-4. Click **"Save Draft"** -> Notice status is `DRAFT` and application number is generated (`EZF-2026-000001`).
-5. Refresh browser -> Application state persists from PostgreSQL.
-6. Click **"Submit Application"** -> Status transitions to `SUBMITTED` with `submitted_at` timestamp.
-7. Form becomes locked / read-only and any modification attempts return `409 Conflict`.
+2. Open Dashboard (`/dashboard`) and click **"Apply for Personal Loan"**.
+3. Fill in loan parameters (Amount: `₹5,00,000`, Income: `₹60,000`, Debt: `₹10,000`, Tenure: `36 Months`).
+4. Click **"Submit Application"** -> Status updates to `SUBMITTED`.
+5. Click **"Check Loan Eligibility"**:
+   - The engine evaluates DTI (16.7%), income sufficiency, and internal eligibility score (99/100).
+   - Generates structured, explainable decision rationale.
+6. Review the 3 generated loan packages:
+   - **Standard Plan**: 12.5% p.a., 36 months, EMI ₹16,727
+   - **Low Monthly EMI Plan**: 13.5% p.a., 48 months, EMI ₹13,538
+   - **Fast Payoff Plan**: 11.5% p.a., 24 months, EMI ₹23,420
+7. Click **"Select This Offer"** on your preferred plan -> Status transitions to `OFFER_SELECTED`.
+8. Refresh browser -> Selected offer and application state persist from PostgreSQL.
 
 ---
 
 ## Documentation
 
-- [Architecture Document](docs/architecture.md) — Comprehensive technical specification, ER diagram, Argon2id & JWT architecture, RBAC model, state machine, and security rationales.
+- [Architecture Document](docs/architecture.md) — Comprehensive technical specification, ER diagram, Argon2id & JWT architecture, RBAC model, state machine, underwriting rules, and financial calculation formulas.

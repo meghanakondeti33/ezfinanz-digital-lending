@@ -108,10 +108,10 @@ Key principles:
 |--------|---------------|
 | **auth** | Signup, login, JWT issuance, password hashing, role-based access |
 | **loans** | Loan application lifecycle, draft creation, updates, submission, ownership |
+| **eligibility** | Deterministic underwriting engine, DTI scoring, explainable decision rationale |
+| **offers** | Reducing-balance EMI calculations, multi-tier offer generation, selection |
 | **verification** | Email OTP, phone OTP (simulated) |
 | **kyc** | KYC document upload, verification (simulated) |
-| **eligibility** | Credit score check, DTI evaluation, eligibility logic |
-| **offers** | Pre-approved loan offers, EMI/IRR calculations, terms selection |
 | **bank** | Bank account details, verification (simulated) |
 | **declaration** | Terms acceptance, digital declaration |
 | **selfie** | Photo/selfie upload, verification (simulated) |
@@ -194,8 +194,6 @@ User (1)
 
 ## 11. Core Loan Application Workflow & State Machine (Phase 3)
 
-### 11.1 Lifecycle & State Transitions
-
 ```
                     ┌─────────────────────────┐
                     │      CREATE DRAFT       │
@@ -223,26 +221,50 @@ User (1)
                          409 CONFLICT ────────────────────┘
 ```
 
-### 11.2 Ownership & Access Control Rules
+---
 
-1. **Strict Ownership Scoping**:
-   - The user identity is extracted purely from the verified JWT `sub` claim.
-   - All queries filter by `user_id == current_user.id`.
-   - Accessing another user's loan application returns `404 Not Found` (never leaking existence).
-2. **State-Enforced Immutability**:
-   - `DRAFT` applications can be modified via `PATCH /api/v1/loans/applications/{id}`.
-   - Once submitted (`status = SUBMITTED`), any modification attempt is rejected with `409 Conflict`.
-3. **Application Number Generation**:
-   - Backend automatically assigns formatted, sequential, collision-resistant application numbers: `EZF-YYYY-000001`.
-4. **Idempotent Submission**:
-   - Calling `POST /submit` on an already submitted application returns the submitted application without throwing errors or corrupting state.
+## 12. Eligibility Engine, Explainability & Loan Offers (Phase 4)
 
-### 11.3 Loan Application Endpoints
+### 12.1 Underwriting & Eligibility Rules
+The engine evaluates loan applications deterministically using configurable underwriting guidelines:
+- **Minimum Gross Monthly Income**: ₹25,000.00
+- **Maximum Debt-to-Income (DTI) Ratio**: 50.00%
+  $$\text{DTI} = \frac{\text{existing\_monthly\_debt}}{\text{monthly\_income}}$$
+- **Maximum Loan-to-Income Multiplier**: 30.0x gross monthly income
+- **Loan Amount Range**: ₹25,000.00 to ₹5,000,000.00
+- **Tenure Range**: 6 to 60 months
+
+### 12.2 Explainable Decision Generation
+Rather than returning a black-box boolean, the engine computes:
+1. **Internal Eligibility Score** (0–100 scale): A deterministic underwriting score based on DTI bands, income brackets, and employment stability. This is strictly an internal metric and NOT an external credit bureau score (no CIBIL/Experian integration in this phase).
+2. **Structured Rationale List**: Transparent reasons explaining the evaluation (e.g. income verification, DTI compliance, affordability threshold, tenure approval).
+
+### 12.3 Reducing-Balance Financial Mathematics
+- **Monthly Interest Rate**: $r = \frac{\text{Annual Rate}}{1200}$
+- **Reducing-Balance EMI**:
+  $$\text{EMI} = \frac{P \times r \times (1+r)^n}{(1+r)^n - 1}$$
+- **Total Interest Payable**: $\text{Total Repayment} - \text{Principal}$
+- **Processing Fee & GST**: $\text{Fee} = P \times \text{fee}\%$, $\text{GST} = \text{Fee} \times 18\%$
+- **Net Disbursement**: $\text{Principal} - (\text{Fee} + \text{GST})$
+- **Effective Annual Cost Rate**:
+  $$\text{APR} = \text{Annual Rate} + \left( \frac{\text{Total Charges}}{P} \times \frac{12}{n} \times 100 \right)$$
+
+### 12.4 Multi-Tier Loan Offer Generation
+Eligible applicants automatically receive 3 distinct, transparent loan options for comparison:
+1. **Standard Plan**: 12.50% p.a., requested tenure, 1.50% processing fee
+2. **Low Monthly EMI Plan**: 13.50% p.a., extended tenure (+12 months, max 60m), 1.75% processing fee
+3. **Fast Payoff Plan (Low Total Interest)**: 11.50% p.a., accelerated tenure (-12 months, min 12m), 1.25% processing fee
+
+### 12.5 State Transitions
+
+```
+[ SUBMITTED ] ──► POST /eligibility ──► [ ELIGIBILITY_CHECKED ] ──► POST /offers/{id}/select ──► [ OFFER_SELECTED ]
+```
+
+### 12.6 API Endpoints
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/loans/applications` | Customer | Creates a new draft application with generated application number |
-| `GET` | `/api/v1/loans/applications` | Customer | Lists all applications belonging to the customer (newest first) |
-| `GET` | `/api/v1/loans/applications/{id}` | Customer | Retrieves single application by ID (strict ownership check) |
-| `PATCH` | `/api/v1/loans/applications/{id}` | Customer | Updates draft application (returns 409 if submitted) |
-| `POST` | `/api/v1/loans/applications/{id}/submit` | Customer | Validates required fields and transitions to `SUBMITTED` |
+| `POST` | `/api/v1/loans/applications/{id}/eligibility` | Customer | Evaluates underwriting rules, persists score/reasons, and generates 3 offers |
+| `GET` | `/api/v1/loans/applications/{id}/offers` | Customer | Lists available loan packages with complete repayment schedules |
+| `POST` | `/api/v1/loans/applications/{id}/offers/{offer_id}/select` | Customer | Selects chosen offer, marks others expired, and transitions to `OFFER_SELECTED` |
