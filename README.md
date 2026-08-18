@@ -145,6 +145,19 @@ EZFINANZ/
 | `GET` | `/api/v1/loans/applications/{id}/offers` | Customer | List available loan offer packages with terms |
 | `POST` | `/api/v1/loans/applications/{id}/offers/{offer_id}/select` | Customer | Select offer & lock terms (`OFFER_SELECTED`) |
 
+### Verification Pipeline Endpoints (Phase 5)
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/loans/applications/{id}/kyc` | Customer | Submit & verify KYC details (ID masked in response) |
+| `GET` | `/api/v1/loans/applications/{id}/kyc` | Customer | Retrieve KYC profile with masked ID (`XXXX-XXXX-1234`) |
+| `POST` | `/api/v1/loans/applications/{id}/bank-account` | Customer | Submit & verify destination bank account |
+| `GET` | `/api/v1/loans/applications/{id}/bank-account` | Customer | Retrieve bank details with masked account (`XXXXXX1234`) |
+| `POST` | `/api/v1/loans/applications/{id}/selfie` | Customer | Submit live photo / selfie reference |
+| `GET` | `/api/v1/loans/applications/{id}/selfie` | Customer | Retrieve selfie verification status |
+| `POST` | `/api/v1/loans/applications/{id}/declaration` | Customer | Accept loan declaration terms (records IP & timestamp) |
+| `GET` | `/api/v1/loans/applications/{id}/declaration` | Customer | Retrieve declaration status |
+| `GET` | `/api/v1/loans/applications/{id}/verification` | Customer | Consolidated verification progress summary |
+
 ---
 
 ## Manual Demo Flow
@@ -161,7 +174,13 @@ EZFINANZ/
    - **Low Monthly EMI Plan**: 13.5% p.a., 48 months, EMI ₹13,538
    - **Fast Payoff Plan**: 11.5% p.a., 24 months, EMI ₹23,420
 7. Click **"Select This Offer"** on your preferred plan -> Status transitions to `OFFER_SELECTED`.
-8. Refresh browser -> Selected offer and application state persist from PostgreSQL.
+8. Complete the **Verification Pipeline**:
+   - **Step 1 (KYC)**: Submit identity details -> Verified with masked ID (`XXXX-XXXX-1234`).
+   - **Step 2 (Bank Account)**: Submit banking details -> Verified with masked account (`XXXXXX1234`).
+   - **Step 3 (Live Selfie)**: Submit simulated liveness photo -> Verified.
+   - **Step 4 (Declaration)**: Check "I agree" and accept legal declaration terms -> Timestamp recorded.
+9. Verification status reaches `COMPLETED` and application transitions to `UNDER_REVIEW` (ready for admin review).
+10. Refresh browser -> All verification steps and application status persist from PostgreSQL.
 
 ---
 

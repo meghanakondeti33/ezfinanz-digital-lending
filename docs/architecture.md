@@ -268,3 +268,58 @@ Eligible applicants automatically receive 3 distinct, transparent loan options f
 | `POST` | `/api/v1/loans/applications/{id}/eligibility` | Customer | Evaluates underwriting rules, persists score/reasons, and generates 3 offers |
 | `GET` | `/api/v1/loans/applications/{id}/offers` | Customer | Lists available loan packages with complete repayment schedules |
 | `POST` | `/api/v1/loans/applications/{id}/offers/{offer_id}/select` | Customer | Selects chosen offer, marks others expired, and transitions to `OFFER_SELECTED` |
+
+---
+
+## 13. Customer Verification Pipeline (Phase 5)
+
+### 13.1 Verification Lifecycle & State Machine
+Following offer selection, the customer must complete four mandatory verification milestones:
+
+```
+[ OFFER_SELECTED ]
+        │
+        ├──► Step 1: KYC Verification (Demographic + Government ID)
+        │
+        ├──► Step 2: Disbursement Bank Account Verification
+        │
+        ├──► Step 3: Live Photo / Selfie Verification
+        │
+        └──► Step 4: Borrower Legal Declaration Acceptance
+        │
+        ▼ (All 4 Verified)
+[ UNDER_REVIEW ] (Ready for Credit Underwriter Review)
+```
+
+Verification status progresses from `NOT_STARTED` → `IN_PROGRESS` → `COMPLETED`. The overall completion is computed deterministically by the backend.
+
+### 13.2 Sensitive Data Protection & Masking
+- **Government ID Numbers (Aadhaar/PAN/Passport)**: SHA-256 hashed before persistence (`id_number_hash`). Responses return only masked formats (e.g. `XXXX-XXXX-1234`).
+- **Bank Account Numbers**: SHA-256 hashed before persistence (`account_number_hash`). Only the last 4 digits are retained in plaintext (`account_number_last4`), returning masked values (e.g. `XXXXXX1234`).
+- **Document & Image Files**: Raw binary blobs are never stored directly in the database. Metadata and storage reference keys (`storage_key`, `document_storage_key`) are saved.
+
+### 13.3 Mock Verification Adapter Architecture
+Modular adapters simulate real-world identity and banking providers:
+- `MockKYCAdapter`: Validates document syntax and simulated verification.
+- `MockBankAdapter`: Simulates penny-drop verification against IFSC and account numbers.
+- `MockSelfieAdapter`: Simulates facial liveness checks.
+
+### 13.4 Immutable Audit Logging
+Key verification milestones dispatch structured records into the `audit_logs` table:
+- `KYC_VERIFIED`, `BANK_ACCOUNT_VERIFIED`, `SELFIE_VERIFIED`, `DECLARATION_ACCEPTED`, `VERIFICATION_COMPLETED`.
+- Plaintext secrets and sensitive credentials are never written to audit logs.
+
+### 13.5 Verification Endpoints
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/loans/applications/{id}/kyc` | Customer | Submit and verify KYC demographic & ID information |
+| `GET` | `/api/v1/loans/applications/{id}/kyc` | Customer | Retrieve verified KYC details with masked ID |
+| `POST` | `/api/v1/loans/applications/{id}/bank-account` | Customer | Submit and verify destination bank account |
+| `GET` | `/api/v1/loans/applications/{id}/bank-account` | Customer | Retrieve bank account details with masked account number |
+| `POST` | `/api/v1/loans/applications/{id}/selfie` | Customer | Submit and verify live photo / selfie reference |
+| `GET` | `/api/v1/loans/applications/{id}/selfie` | Customer | Retrieve selfie verification record |
+| `POST` | `/api/v1/loans/applications/{id}/declaration` | Customer | Accept loan terms declaration (records IP & timestamp) |
+| `GET` | `/api/v1/loans/applications/{id}/declaration` | Customer | Retrieve declaration status |
+| `GET` | `/api/v1/loans/applications/{id}/verification` | Customer | Retrieve consolidated verification summary |
+

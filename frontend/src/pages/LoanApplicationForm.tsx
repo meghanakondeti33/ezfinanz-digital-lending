@@ -15,6 +15,7 @@ import type {
   LoanApplicationPayload,
   LoanOffer,
 } from '../types/loan';
+import { VerificationWizard } from '../components/verification/VerificationWizard';
 
 const PURPOSE_OPTIONS = [
   'Home renovation',
@@ -551,6 +552,17 @@ export const LoanApplicationForm: React.FC = () => {
               })}
             </div>
           </div>
+        )}
+
+        {/* Phase 5: Verification Pipeline Wizard */}
+        {application && (application.status === 'OFFER_SELECTED' || application.status === 'UNDER_REVIEW') && (
+          <VerificationWizard
+            applicationId={application.id}
+            onVerificationComplete={async () => {
+              const updated = await fetchApplication(application.id);
+              setApplication(updated);
+            }}
+          />
         )}
 
         {/* Loan Application Details Form Card */}
