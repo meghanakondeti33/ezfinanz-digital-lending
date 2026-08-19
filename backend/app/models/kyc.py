@@ -63,6 +63,18 @@ class KYCDetail(Base):
     document_storage_key: Mapped[str | None] = mapped_column(
         String(500), nullable=True
     )
+    document_filename: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    document_status: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default="KYC_NOT_SUBMITTED"
+    )
+    document_rejection_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    document_uploaded_at = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     created_at = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

@@ -244,7 +244,6 @@ def get_admin_application_detail(
     bank = app.bank_accounts[0] if app.bank_accounts else None
     selfie = app.selfie_verifications[0] if app.selfie_verifications else None
     dec = app.declarations[0] if app.declarations else None
-
     kyc_resp = None
     if kyc:
         kyc_resp = KYCResponse(
@@ -261,6 +260,10 @@ def get_admin_application_detail(
             id_type=kyc.id_type,
             id_number_masked="XXXX-XXXX-****",
             status="VERIFIED",
+            document_status=kyc.document_status or "KYC_NOT_SUBMITTED",
+            document_filename=kyc.document_filename,
+            document_rejection_reason=kyc.document_rejection_reason,
+            document_uploaded_at=kyc.document_uploaded_at,
             created_at=kyc.created_at,
         )
 

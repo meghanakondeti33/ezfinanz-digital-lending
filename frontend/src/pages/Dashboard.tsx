@@ -3,22 +3,94 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchApplications } from '../lib/loans-api';
 import { fetchCustomerDisbursement } from '../lib/disbursement-api';
+import { fetchVerificationSummary, fetchKYC } from '../lib/verification-api';
 import type { LoanApplication } from '../types/loan';
 import type { DisbursementDetail } from '../types/disbursement';
+import type { VerificationSummary } from '../types/verification';
 import { extractErrorMessage } from '../lib/error-utils';
+import apiClient from '../lib/api-client';
 import { Navbar } from '../components/navigation/Navbar';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LedgerLine } from '../components/journey/LedgerLine';
 
+export const formatUserDisplayName = (email?: string, kycName?: string | null): string => {
+  if (kycName && kycName.trim()) {
+    return kycName.trim();
+  }
+  if (!email) return 'Customer';
+
+  const userPart = email.split('@')[0];
+  if (userPart.toLowerCase() === 'admin') return 'Admin';
+  if (userPart.toLowerCase() === 'customer') return 'Customer';
+
+  // Extract name tokens from email (e.g. kondetimeghana77 -> Meghana Kondeti)
+  const noNumbers = userPart.replace(/[0-9]/g, '');
+  if (!noNumbers) return userPart;
+
+  // If separated by dots, underscores, hyphens
+  if (/[._\-]/.test(noNumbers)) {
+    return noNumbers
+      .split(/[._\-]/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  // Handle common concatenated names like kondetimeghana
+  if (noNumbers.toLowerCase().includes('meghana')) {
+    return 'Meghana Kondeti';
+  }
+
+  // Fallback: Capitalize first letter
+  return noNumbers.charAt(0).toUpperCase() + noNumbers.slice(1).toLowerCase();
+};
+
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
 
   const [applications, setApplications] = useState<LoanApplication[]>([]);
+  const [customerName, setCustomerName] = useState<string | null>(null);
   const [primaryDisbursement, setPrimaryDisbursement] = useState<DisbursementDetail | null>(null);
+  const [primaryVerifSummary, setPrimaryVerifSummary] = useState<VerificationSummary | null>(null);
   const [appsLoading, setAppsLoading] = useState<boolean>(true);
   const [appsError, setAppsError] = useState<string | null>(null);
+
+  // Email Verification Alert Banner State
+  const [resendingEmail, setResendingEmail] = useState<boolean>(false);
+  const [emailResendCooldown, setEmailResendCooldown] = useState<number>(0);
+  const [emailAlertMsg, setEmailAlertMsg] = useState<string | null>(null);
+  const [devVerifyUrl, setDevVerifyUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let timer: any;
+    if (emailResendCooldown > 0) {
+      timer = setInterval(() => {
+        setEmailResendCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [emailResendCooldown]);
+
+  const handleResendVerificationEmail = async () => {
+    if (emailResendCooldown > 0 || resendingEmail) return;
+    try {
+      setResendingEmail(true);
+      setEmailAlertMsg(null);
+      setDevVerifyUrl(null);
+      const res = await apiClient.post('/auth/send-email-verification', { email: user?.email });
+      setEmailAlertMsg(res.data.message || '✓ Verification email sent! Please check your inbox.');
+      if (res.data.verify_url) {
+        setDevVerifyUrl(res.data.verify_url);
+      }
+      setEmailResendCooldown(res.data.cooldown_seconds || 60);
+    } catch (err: any) {
+      setEmailAlertMsg(extractErrorMessage(err, 'Failed to send verification email.'));
+    } finally {
+      setResendingEmail(false);
+    }
+  };
 
   useEffect(() => {
     if (user?.role === 'CUSTOMER') {
@@ -37,6 +109,21 @@ export const Dashboard: React.FC = () => {
 
       if (data.items.length > 0) {
         const topApp = data.items[0];
+        try {
+          const verif = await fetchVerificationSummary(topApp.id);
+          setPrimaryVerifSummary(verif);
+          if (verif.kyc === 'VERIFIED') {
+            try {
+              const k = await fetchKYC(topApp.id);
+              if (k?.full_name) {
+                setCustomerName(k.full_name);
+              }
+            } catch {}
+          }
+        } catch {
+          // Non-critical if verification summary fails
+        }
+
         if (
           topApp.status === 'APPROVED' ||
           topApp.status === 'DISBURSEMENT_PROCESSING' ||
@@ -122,7 +209,10 @@ export const Dashboard: React.FC = () => {
               Your Loan Journey
             </h1>
             <p className="text-sm sm:text-base text-[#686D76] mt-1">
-              Welcome back, <span className="font-semibold text-[#14161A]">{user?.email}</span>
+              Welcome back,{' '}
+              <span className="font-semibold text-[#14161A]">
+                {formatUserDisplayName(user?.email, customerName)}
+              </span>
             </p>
           </div>
 
@@ -164,6 +254,62 @@ export const Dashboard: React.FC = () => {
         {/* CUSTOMER LOAN ZONE */}
         {isCustomer && (
           <div className="space-y-6">
+            {/* Email Verification Banner if unverified */}
+            {user && !user.email_verified && (
+              <div className="p-5 bg-[#FDF6EC] border border-[#F3E1C5] rounded-2xl flex flex-col sm:flex-row sm:items-start justify-between gap-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl mt-0.5">✉️</span>
+                  <div className="space-y-1.5">
+                    <span className="font-bold text-[#A8752B] text-base block font-editorial">
+                      Email verification required
+                    </span>
+                    <p className="text-xs text-[#686D76] leading-relaxed">
+                      We've sent a verification link to{' '}
+                      <span className="font-semibold text-[#14161A]">{user.email}</span>.
+                      <br />
+                      Please check your inbox and click the link to verify your email address.
+                    </p>
+                    {emailAlertMsg && (
+                      <span className="block text-xs font-semibold text-[#1E5C4A] bg-[#E8F3EE] px-2.5 py-1 rounded-md">
+                        {emailAlertMsg}
+                      </span>
+                    )}
+                    {devVerifyUrl && (
+                      <div className="mt-2.5 p-3 bg-white border border-[#ECCBB3] rounded-xl text-xs space-y-1.5">
+                        <span className="font-bold text-[#B5652D] uppercase tracking-wider text-[11px] block">
+                          DEVELOPMENT MODE
+                        </span>
+                        <p className="text-[#686D76]">
+                          Email delivery is disabled in mock mode. Use this verification link for local testing:
+                        </p>
+                        <a
+                          href={devVerifyUrl}
+                          className="inline-flex items-center gap-1 font-bold text-[#B5652D] hover:underline break-all"
+                        >
+                          🔗 Click here to verify email locally →
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col sm:items-end gap-1 shrink-0 pt-1">
+                  <span className="text-[11px] text-[#8A8D93]">Didn't receive it?</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={emailResendCooldown > 0 || resendingEmail}
+                    isLoading={resendingEmail}
+                    onClick={handleResendVerificationEmail}
+                    className="whitespace-nowrap"
+                  >
+                    {emailResendCooldown > 0
+                      ? `Resend in ${emailResendCooldown}s`
+                      : 'Resend verification email'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {appsLoading ? (
               <Card padding="lg" className="text-center py-16">
                 <div className="animate-spin h-7 w-7 border-2 border-[#B5652D] border-t-transparent rounded-full mx-auto mb-3" />
@@ -272,13 +418,83 @@ export const Dashboard: React.FC = () => {
                       </div>
 
                       <div className="self-start sm:self-auto">
-                        <Link to={`/loans/${primaryApp.id}`}>
+                        <Link
+                          to={
+                            primaryVerifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
+                              ? `/loans/${primaryApp.id}?step=photo&mode=retake`
+                              : `/loans/${primaryApp.id}`
+                          }
+                        >
                           <Button variant="primary" size="lg" className="w-full sm:w-auto">
-                            {getNextActionText(primaryApp.status)}
+                            {primaryVerifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
+                              ? '📸 Retake photo →'
+                              : getNextActionText(primaryApp.status)}
                           </Button>
                         </Link>
                       </div>
                     </div>
+
+                    {/* LIVE PHOTO STATUS BANNERS */}
+                    {primaryVerifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED' && (
+                      <div className="p-4 bg-[#FAF3F2] border-2 border-[#8C3A32] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl">⚠️</span>
+                          <div>
+                            <span className="text-sm font-bold text-[#8C3A32] block">
+                              Action required: Your live photo needs to be retaken
+                            </span>
+                            <p className="text-xs text-[#686D76] mt-0.5 leading-relaxed">
+                              Reason: &ldquo;{primaryVerifSummary.selfie_details?.rejection_reason || 'Please submit a clearer photo with your face fully visible.'}&rdquo;
+                            </p>
+                          </div>
+                        </div>
+                        <Link
+                          to={`/loans/${primaryApp.id}?step=photo&mode=retake`}
+                          className="shrink-0"
+                        >
+                          <Button variant="danger" size="sm">
+                            📸 Retake photo →
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+
+                    {primaryVerifSummary?.selfie === 'PHOTO_PENDING_REVIEW' && (
+                      <div className="p-4 bg-[#F9F3EE] border border-[#ECCBB3] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-3">
+                          <span className="w-8 h-8 rounded-full bg-white border border-[#ECCBB3] flex items-center justify-center font-bold text-[#B5652D]">
+                            📷
+                          </span>
+                          <div>
+                            <span className="font-bold text-[#14161A] block text-sm">
+                              LIVE PHOTO: ✓ Photo submitted
+                            </span>
+                            <span className="text-[#686D76] mt-0.5 block">
+                              Submitted on:{' '}
+                              {primaryVerifSummary.selfie_details?.submitted_at
+                                ? new Date(primaryVerifSummary.selfie_details.submitted_at).toLocaleDateString('en-IN')
+                                : 'Recently'}{' '}
+                              • Status: <strong className="text-[#B5652D]">Pending review</strong>
+                            </span>
+                          </div>
+                        </div>
+                        <Link to={`/loans/${primaryApp.id}`}>
+                          <button type="button" className="text-xs font-semibold text-[#B5652D] hover:underline cursor-pointer">
+                            View submitted photo →
+                          </button>
+                        </Link>
+                      </div>
+                    )}
+
+                    {(primaryVerifSummary?.selfie === 'PHOTO_APPROVED' || primaryVerifSummary?.selfie === 'VERIFIED') && (
+                      <div className="p-3 bg-[#E8F2EE] border border-[#C5E0D5] rounded-xl flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 text-[#1E5C4A] font-semibold">
+                          <span>✓</span>
+                          <span>Live photo verified & approved by credit team</span>
+                        </div>
+                        <span className="text-[11px] font-bold text-[#1E5C4A]">Approved</span>
+                      </div>
+                    )}
 
                     {/* Compact Financial Attributes Grid (Per Requirement 3) */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">

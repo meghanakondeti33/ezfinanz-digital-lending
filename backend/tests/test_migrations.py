@@ -50,3 +50,12 @@ def test_migration_upgrade_and_downgrade_cycle(alembic_cfg, engine):
     assert "loan_applications" in tables_recreated
     assert "users" in tables_recreated
     assert "disbursements" in tables_recreated
+
+    # Restore default development demo accounts
+    from app.core.database import SessionLocal
+    from app.services.auth_service import ensure_default_accounts
+    db = SessionLocal()
+    try:
+        ensure_default_accounts(db)
+    finally:
+        db.close()

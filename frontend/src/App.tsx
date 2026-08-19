@@ -3,6 +3,7 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import VerifyEmail from './pages/VerifyEmail';
 import LoanApplicationForm from './pages/LoanApplicationForm';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminApplicationReview } from './pages/admin/AdminApplicationReview';
@@ -16,6 +17,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route
           path="/dashboard"
           element={
@@ -34,6 +36,22 @@ function App() {
         />
         <Route
           path="/loans/:id"
+          element={
+            <ProtectedRoute>
+              <LoanApplicationForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/loans/:id/verification"
+          element={
+            <ProtectedRoute>
+              <LoanApplicationForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/application/:id/verification"
           element={
             <ProtectedRoute>
               <LoanApplicationForm />

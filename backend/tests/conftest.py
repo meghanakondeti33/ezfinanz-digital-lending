@@ -15,6 +15,10 @@ from app.core.database import Base, get_db
 from app.main import app as fastapi_app
 import app.models  # noqa: F401
 
+# Force demo OTP mode and mock email mode during automated test runs
+settings.OTP_MODE = "demo"
+settings.EMAIL_MODE = "mock"
+
 
 @pytest.fixture(scope="session")
 def engine():

@@ -149,6 +149,30 @@ def test_registration_rejects_weak_password(client: TestClient):
     assert response.status_code == 422
 
 
+def test_registration_phone_validation_edge_cases(client: TestClient):
+    """Verify phone validation strictly enforces Indian 10-digit format (starting with 6-9)."""
+    base_payload = {
+        "email": "phone_test@ezfinanz.com",
+        "password": "StrongPassword@123",
+    }
+
+    # 1. Short phone (9 digits) -> 422
+    res_short = client.post("/api/v1/auth/register", json={**base_payload, "phone": "987654321"})
+    assert res_short.status_code == 422
+
+    # 2. Long phone (11 digits) -> 422
+    res_long = client.post("/api/v1/auth/register", json={**base_payload, "phone": "98765432101"})
+    assert res_long.status_code == 422
+
+    # 3. Invalid starting digit (starts with 1) -> 422
+    res_start = client.post("/api/v1/auth/register", json={**base_payload, "phone": "1234567890"})
+    assert res_start.status_code == 422
+
+    # 4. Non-numeric characters -> 422
+    res_alpha = client.post("/api/v1/auth/register", json={**base_payload, "phone": "98765abc10"})
+    assert res_alpha.status_code == 422
+
+
 def test_registration_cannot_specify_admin_role(client: TestClient):
     """Verify public registration rejects extra 'role' field (role escalation attempt)."""
     payload = {

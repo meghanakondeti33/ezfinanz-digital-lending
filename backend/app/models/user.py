@@ -45,6 +45,9 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[uuid.UUID] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

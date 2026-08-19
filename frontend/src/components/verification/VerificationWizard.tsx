@@ -17,26 +17,32 @@ import {
   submitBankAccount,
   submitDeclaration,
   submitKYC,
-  submitSelfie,
+  uploadKYCDocument,
 } from '../../lib/verification-api';
 import { extractErrorMessage } from '../../lib/error-utils';
+import { SUPPORTED_BANKS, validateBankIfsc } from '../../lib/banks';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Card } from '../ui/Card';
+import SelfieCameraCapture from './SelfieCameraCapture';
 
 interface VerificationWizardProps {
   applicationId: string;
+  initialStep?: number;
+  initialMode?: 'retake' | 'capture';
   onVerificationComplete?: () => void;
 }
 
 export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   applicationId,
+  initialStep,
+  initialMode,
   onVerificationComplete,
 }) => {
   const [summary, setSummary] = useState<VerificationSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeStep, setActiveStep] = useState<number>(1);
+  const [activeStep, setActiveStep] = useState<number>(initialStep || 1);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -46,6 +52,14 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   const [bankData, setBankData] = useState<BankAccountData | null>(null);
   const [selfieData, setSelfieData] = useState<SelfieData | null>(null);
   const [declarationData, setDeclarationData] = useState<DeclarationData | null>(null);
+
+  // KYC Document Upload State
+  const [uploadingKycDoc, setUploadingKycDoc] = useState<boolean>(false);
+  const [uploadedDocInfo, setUploadedDocInfo] = useState<{
+    filename: string;
+    status: string;
+    rejection_reason?: string | null;
+  } | null>(null);
 
   // Form states
   const [kycForm, setKycForm] = useState({
@@ -65,8 +79,12 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
     account_holder_name: '',
     account_number: '',
     ifsc: 'HDFC0001234',
-    bank_name: 'HDFC Bank',
+    bank_name: SUPPORTED_BANKS[1].name, // HDFC Bank
   });
+
+  const [ifscValidation, setIfscValidation] = useState<{ isValid: boolean; message: string }>(() =>
+    validateBankIfsc(SUPPORTED_BANKS[1].name, 'HDFC0001234')
+  );
 
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
 
@@ -83,6 +101,13 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         try {
           const k = await fetchKYC(applicationId);
           setKycData(k);
+          if (k.document_filename || k.document_status) {
+            setUploadedDocInfo({
+              filename: k.document_filename || 'KYC_Document.pdf',
+              status: k.document_status || 'KYC_DOCUMENT_UPLOADED',
+              rejection_reason: k.document_rejection_reason,
+            });
+          }
         } catch {}
       }
 
@@ -93,11 +118,16 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         } catch {}
       }
 
-      if (summ.selfie === 'VERIFIED') {
+      // Always restore selfie data from backend
+      if (summ.selfie_details) {
+        setSelfieData(summ.selfie_details);
+      } else if (summ.selfie !== 'NOT_STARTED') {
         try {
           const s = await fetchSelfie(applicationId);
           setSelfieData(s);
         } catch {}
+      } else {
+        setSelfieData(null);
       }
 
       if (summ.declaration === 'ACCEPTED') {
@@ -108,12 +138,26 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         } catch {}
       }
 
-      // Automatically determine first incomplete step
-      if (summ.kyc !== 'VERIFIED') setActiveStep(1);
-      else if (summ.bank_account !== 'VERIFIED') setActiveStep(2);
-      else if (summ.selfie !== 'VERIFIED') setActiveStep(3);
-      else if (summ.declaration !== 'ACCEPTED') setActiveStep(4);
-      else {
+      // Automatically determine first incomplete or actionable step
+      const isSelfieSubmittedOrApproved =
+        summ.selfie === 'PHOTO_PENDING_REVIEW' ||
+        summ.selfie === 'PHOTO_APPROVED' ||
+        summ.selfie === 'VERIFIED';
+      const isSelfieRetakeRequired = summ.selfie === 'PHOTO_RETAKE_REQUIRED';
+
+      if (initialStep) {
+        setActiveStep(initialStep);
+      } else if (initialMode === 'retake' || isSelfieRetakeRequired) {
+        setActiveStep(3);
+      } else if (summ.kyc !== 'VERIFIED') {
+        setActiveStep(1);
+      } else if (summ.bank_account !== 'VERIFIED') {
+        setActiveStep(2);
+      } else if (!isSelfieSubmittedOrApproved) {
+        setActiveStep(3);
+      } else if (summ.declaration !== 'ACCEPTED') {
+        setActiveStep(4);
+      } else {
         setActiveStep(5);
         if (onVerificationComplete) onVerificationComplete();
       }
@@ -148,9 +192,48 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
     }
   };
 
+  // Step 1b: Handle KYC Document PDF Upload
+  const handleKYCDocumentUpload = async (file: File) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Invalid file format. Please upload your identity document as a PDF file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size exceeds the 5 MB maximum limit.');
+      return;
+    }
+
+    setUploadingKycDoc(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await uploadKYCDocument(applicationId, file);
+      setUploadedDocInfo({
+        filename: res.filename,
+        status: res.status,
+      });
+      setSuccess(`✓ ${res.message} (${res.filename})`);
+      await loadState();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to upload KYC document.'));
+    } finally {
+      setUploadingKycDoc(false);
+    }
+  };
+
   // Step 2: Handle Bank Account Submission
   const handleBankSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const val = validateBankIfsc(bankForm.bank_name, bankForm.ifsc);
+    setIfscValidation(val);
+    if (!val.isValid) {
+      setError(val.message);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -163,27 +246,6 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
       setActiveStep(3);
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Failed to verify bank account.'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Step 3: Handle Selfie Submission
-  const handleSelfieSubmit = async () => {
-    setSubmitting(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const res = await submitSelfie(applicationId, {
-        storage_key: `selfies/${applicationId}_live_photo.jpg`,
-      });
-      setSelfieData(res);
-      setSuccess('Live photo verification confirmed.');
-      await loadState();
-      setActiveStep(4);
-    } catch (err: any) {
-      setError(extractErrorMessage(err, 'Photo verification failed.'));
     } finally {
       setSubmitting(false);
     }
@@ -230,7 +292,14 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   const steps = [
     { num: 1, title: 'Identity (KYC)', done: summary?.kyc === 'VERIFIED' },
     { num: 2, title: 'Bank Account', done: summary?.bank_account === 'VERIFIED' },
-    { num: 3, title: 'Live Photo', done: summary?.selfie === 'VERIFIED' },
+    {
+      num: 3,
+      title: 'Live Photo',
+      done:
+        summary?.selfie === 'PHOTO_APPROVED' ||
+        summary?.selfie === 'VERIFIED' ||
+        summary?.selfie === 'PHOTO_PENDING_REVIEW',
+    },
     { num: 4, title: 'Declaration', done: summary?.declaration === 'ACCEPTED' },
   ];
 
@@ -413,6 +482,67 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
                 />
               </div>
 
+              {/* KYC Document Upload */}
+              <div className="p-4 bg-[#FAF8F5] border border-[#E5E2DC] rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#14161A]">
+                    Supporting Identity Document (PDF)
+                  </span>
+                  <span className="text-xs text-[#8A8D93]">Max 5 MB • PDF format</span>
+                </div>
+
+                {uploadedDocInfo?.status === 'KYC_REJECTED' && (
+                  <div className="p-3 bg-[#FBEFEC] border border-[#F0D0CB] rounded-xl text-xs text-[#8C3A32] space-y-1">
+                    <span className="font-bold">⚠️ KYC document needs attention</span>
+                    <p>{uploadedDocInfo.rejection_reason || 'Please upload a clearer copy.'}</p>
+                  </div>
+                )}
+
+                {uploadedDocInfo ? (
+                  <div className="p-3 bg-white border border-[#C5E0D5] rounded-xl text-xs flex items-center justify-between">
+                    <span className="text-[#1E5C4A] font-semibold flex items-center gap-1.5">
+                      <span>📄</span>
+                      <span>{uploadedDocInfo.filename}</span>
+                      <span className="text-[11px] text-[#686D76] font-normal">
+                        ({uploadedDocInfo.status.replace(/_/g, ' ')})
+                      </span>
+                    </span>
+                    <label className="text-xs text-[#B5652D] hover:underline cursor-pointer font-bold">
+                      {uploadingKycDoc ? 'Uploading...' : 'Replace PDF'}
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        disabled={uploadingKycDoc}
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleKYCDocumentUpload(e.target.files[0]);
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="flex flex-col items-center justify-center py-4 px-4 bg-white border-2 border-dashed border-[#D4D0C7] hover:border-[#B5652D] rounded-xl text-center cursor-pointer transition-all">
+                      <span className="text-sm font-semibold text-[#14161A]">
+                        {uploadingKycDoc ? '⏳ Uploading document...' : '📄 Click to Choose PDF Document'}
+                      </span>
+                      <span className="text-xs text-[#8A8D93] mt-0.5">
+                        Aadhaar Card, PAN Card, Passport, or Driving License
+                      </span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        disabled={uploadingKycDoc}
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleKYCDocumentUpload(e.target.files[0]);
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-2 flex justify-end">
                 <Button type="submit" variant="primary" size="md" isLoading={submitting}>
                   Verify Identity Details →
@@ -462,6 +592,22 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
                 placeholder="As per bank passbook / statement"
               />
 
+              <Select
+                label="Bank Name"
+                options={SUPPORTED_BANKS.map((b) => ({
+                  value: b.name,
+                  label: `${b.name} (${b.ifscPrefix})`,
+                }))}
+                value={bankForm.bank_name}
+                onChange={(e) => {
+                  const newBank = e.target.value;
+                  const matched = SUPPORTED_BANKS.find((b) => b.name === newBank);
+                  const suggestedIfsc = matched ? matched.exampleIfsc : bankForm.ifsc;
+                  setBankForm({ ...bankForm, bank_name: newBank, ifsc: suggestedIfsc });
+                  setIfscValidation(validateBankIfsc(newBank, suggestedIfsc));
+                }}
+              />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Bank Account Number"
@@ -477,19 +623,17 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
                   required
                   maxLength={11}
                   value={bankForm.ifsc}
-                  onChange={(e) => setBankForm({ ...bankForm, ifsc: e.target.value.toUpperCase() })}
-                  placeholder="HDFC0001234"
+                  onChange={(e) => {
+                    const newIfsc = e.target.value.toUpperCase();
+                    setBankForm({ ...bankForm, ifsc: newIfsc });
+                    setIfscValidation(validateBankIfsc(bankForm.bank_name, newIfsc));
+                  }}
+                  placeholder="e.g. HDFC0001234"
                   className="font-mono uppercase"
+                  error={!ifscValidation.isValid ? ifscValidation.message : undefined}
+                  hint={ifscValidation.isValid ? ifscValidation.message : undefined}
                 />
               </div>
-
-              <Input
-                label="Bank Name"
-                required
-                value={bankForm.bank_name}
-                onChange={(e) => setBankForm({ ...bankForm, bank_name: e.target.value })}
-                placeholder="e.g. HDFC Bank / State Bank of India"
-              />
 
               <div className="pt-2 flex justify-end">
                 <Button type="submit" variant="primary" size="md" isLoading={submitting}>
@@ -501,49 +645,20 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         </div>
       )}
 
-      {/* Step 3: Selfie */}
+      {/* Step 3: Selfie Camera Capture */}
       {activeStep === 3 && (
-        <div className="space-y-5">
-          <div className="p-4 bg-[#F7F5F1] border border-[#E5E2DC] rounded-xl">
-            <span className="text-sm font-bold text-[#14161A] block">Liveness verification (Simulated Demo)</span>
-            <p className="text-sm text-[#686D76] mt-0.5">
-              Confirm your presence with a quick photo verification to prevent identity theft.
-            </p>
-          </div>
-
-          {selfieData ? (
-            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm sm:text-base font-bold text-[#1E5C4A] flex items-center gap-1.5">
-                  <span>✓</span> Live Photo Confirmed
-                </span>
-                <span className="text-xs text-[#686D76]">ID: {selfieData.id.slice(0, 8)}...</span>
-              </div>
-              <div className="pt-2 flex justify-end">
-                <Button variant="primary" size="md" onClick={() => setActiveStep(4)}>
-                  Continue to Legal Declaration →
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 bg-white border border-[#E5E2DC] rounded-xl text-center space-y-4">
-              <div className="w-16 h-16 rounded-full bg-[#F9F3EE] border border-[#ECCBB3] flex items-center justify-center mx-auto text-2xl text-[#9C4F1C]">
-                📷
-              </div>
-              <div>
-                <span className="text-base font-bold text-[#14161A] block">Live Camera Verification</span>
-                <p className="text-sm text-[#686D76] max-w-sm mx-auto mt-1">
-                  Ensure your face is clearly visible, well-lit, and without sunglasses or hats.
-                </p>
-              </div>
-              <div className="pt-2">
-                <Button variant="primary" size="md" isLoading={submitting} onClick={handleSelfieSubmit}>
-                  Capture & Confirm Photo →
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        <SelfieCameraCapture
+          applicationId={applicationId}
+          existingSelfie={selfieData}
+          initialMode={initialMode}
+          onSelfieVerified={async (res) => {
+            setSelfieData(res);
+            setSuccess('Photo submitted successfully. Awaiting underwriting review.');
+            await loadState();
+            setActiveStep(4);
+          }}
+          onContinue={() => setActiveStep(4)}
+        />
       )}
 
       {/* Step 4: Declaration */}

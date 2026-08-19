@@ -1,8 +1,7 @@
 """
 SelfieVerification model.
 
-Stores selfie verification metadata and storage keys (never raw binary blobs).
-Selfie verification logic is NOT implemented here.
+Stores selfie verification metadata, reviewer decisions, and storage keys.
 """
 
 import enum
@@ -25,6 +24,9 @@ class SelfieVerificationStatus(str, enum.Enum):
     PENDING = "PENDING"
     VERIFIED = "VERIFIED"
     REJECTED = "REJECTED"
+    PHOTO_PENDING_REVIEW = "PHOTO_PENDING_REVIEW"
+    PHOTO_APPROVED = "PHOTO_APPROVED"
+    PHOTO_RETAKE_REQUIRED = "PHOTO_RETAKE_REQUIRED"
 
 
 class SelfieVerification(Base):
@@ -43,14 +45,14 @@ class SelfieVerification(Base):
         String(500), nullable=False
     )
     verification_type: Mapped[SelfieVerificationType] = mapped_column(
-        Enum(SelfieVerificationType, name="selfie_verification_type", create_constraint=True),
+        Enum(SelfieVerificationType, name="selfie_verification_type", create_constraint=False),
         nullable=False,
         default=SelfieVerificationType.LIVE_PHOTO,
     )
     status: Mapped[SelfieVerificationStatus] = mapped_column(
-        Enum(SelfieVerificationStatus, name="selfie_verification_status", create_constraint=True),
+        Enum(SelfieVerificationStatus, name="selfie_verification_status", create_constraint=False),
         nullable=False,
-        default=SelfieVerificationStatus.PENDING,
+        default=SelfieVerificationStatus.PHOTO_PENDING_REVIEW,
     )
     rejection_reason: Mapped[str | None] = mapped_column(
         String(500), nullable=True

@@ -6,10 +6,11 @@ selfie verification, declaration acceptance, and consolidated verification statu
 """
 
 import uuid
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_role
+from app.core.auth import get_current_user, require_role
 from app.core.database import get_db
 from app.models.user import User, UserRole
 from app.schemas.verification import (
@@ -17,6 +18,7 @@ from app.schemas.verification import (
     BankAccountSubmitRequest,
     DeclarationResponse,
     DeclarationSubmitRequest,
+    KYCDocumentUploadResponse,
     KYCResponse,
     KYCSubmitRequest,
     SelfieResponse,
@@ -27,12 +29,16 @@ from app.services.verification_service import (
     get_bank_account,
     get_declaration,
     get_kyc,
+    get_kyc_document_file_path,
     get_selfie,
+    get_selfie_photo_file,
     get_verification_summary,
     submit_bank_account,
     submit_declaration,
     submit_kyc,
     submit_selfie,
+    upload_and_verify_selfie,
+    upload_kyc_document,
 )
 
 router = APIRouter(prefix="/loans/applications/{application_id}", tags=["verification"])
@@ -58,6 +64,71 @@ def submit_customer_kyc(
     Submit customer KYC demographic details and government ID for simulated verification.
     """
     return submit_kyc(db, current_user, application_id, payload)
+
+
+@router.post(
+    "/kyc/document",
+    response_model=KYCDocumentUploadResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Upload KYC supporting identity document (PDF)",
+)
+async def upload_customer_kyc_document(
+    application_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+) -> KYCDocumentUploadResponse:
+    """
+    Upload a government ID PDF document (Aadhaar, PAN, Passport, etc.).
+    Enforces PDF format check, size <= 5MB, and stores in private directory.
+    """
+    file_bytes = await file.read()
+    filename = file.filename or "kyc_document.pdf"
+    content_type = file.content_type or "application/pdf"
+    return upload_kyc_document(db, current_user, application_id, file_bytes, filename, content_type)
+
+
+@router.get(
+    "/kyc/document",
+    summary="Download or view KYC identity document",
+)
+def view_customer_kyc_document(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """
+    Securely stream the uploaded KYC PDF document.
+    Authorized for the loan applicant and underwriting credit officers.
+    """
+    file_path, filename = get_kyc_document_file_path(db, current_user, application_id)
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f"inline; filename={filename}"},
+    )
+
+
+@router.get(
+    "/verification/kyc-document",
+    summary="Download or view KYC identity document (alias)",
+)
+def view_customer_kyc_document_alias(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """
+    Securely stream the uploaded KYC PDF document (alias route).
+    """
+    file_path, filename = get_kyc_document_file_path(db, current_user, application_id)
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f"inline; filename={filename}"},
+    )
 
 
 @router.get(
@@ -138,6 +209,33 @@ def submit_customer_selfie(
     return submit_selfie(db, current_user, application_id, payload)
 
 
+@router.post(
+    "/selfie/upload",
+    response_model=SelfieResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Upload and verify live browser camera photo",
+)
+async def upload_customer_selfie(
+    application_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+) -> SelfieResponse:
+    """
+    Upload real live photo binary from browser camera capture, validate format/size,
+    and process simulated liveness verification.
+    """
+    file_bytes = await file.read()
+    return upload_and_verify_selfie(
+        db=db,
+        user=current_user,
+        application_id=application_id,
+        file_bytes=file_bytes,
+        filename=file.filename or "selfie.jpg",
+        content_type=file.content_type or "image/jpeg",
+    )
+
+
 @router.get(
     "/selfie",
     response_model=SelfieResponse,
@@ -153,6 +251,23 @@ def get_customer_selfie(
     Retrieve selfie verification status.
     """
     return get_selfie(db, current_user, application_id)
+
+
+@router.get(
+    "/verification/live-photo",
+    summary="Retrieve live selfie photo image securely",
+)
+def get_live_photo_image(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Stream the actual verified customer live photo binary.
+    Restricted to the application owner (customer) and credit officers (admin).
+    """
+    file_path, media_type = get_selfie_photo_file(db, current_user, application_id)
+    return FileResponse(file_path, media_type=media_type)
 
 
 # ==============================================================================
@@ -205,6 +320,12 @@ def get_loan_declaration(
     response_model=VerificationSummaryResponse,
     status_code=status.HTTP_200_OK,
     summary="Get consolidated verification pipeline status",
+)
+@router.get(
+    "/verification/summary",
+    response_model=VerificationSummaryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get consolidated verification pipeline status alias",
 )
 def get_verification_status(
     application_id: uuid.UUID,

@@ -43,3 +43,15 @@ export async function submitAdminDecision(
   );
   return response.data;
 }
+
+export async function reviewAdminSelfie(
+  applicationId: string,
+  action: 'APPROVE' | 'REQUEST_RETAKE',
+  reason?: string
+): Promise<any> {
+  const response = await apiClient.post(
+    `/admin/applications/${applicationId}/selfie/review`,
+    { action, reason }
+  );
+  return response.data;
+}

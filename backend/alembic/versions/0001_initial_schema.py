@@ -186,7 +186,7 @@ def upgrade() -> None:
         sa.Column('application_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('storage_key', sa.String(length=500), nullable=False),
         sa.Column('verification_type', sa.Enum('LIVE_PHOTO', 'DOCUMENT_MATCH', name='selfie_verification_type'), nullable=False),
-        sa.Column('status', sa.Enum('PENDING', 'VERIFIED', 'REJECTED', name='selfie_verification_status'), nullable=False),
+        sa.Column('status', sa.Enum('PENDING', 'VERIFIED', 'REJECTED', 'PHOTO_PENDING_REVIEW', 'PHOTO_APPROVED', 'PHOTO_RETAKE_REQUIRED', name='selfie_verification_status'), nullable=False),
         sa.Column('rejection_reason', sa.String(length=500), nullable=True),
         sa.Column('reviewed_by', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('submitted_at', postgresql.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),

@@ -85,9 +85,13 @@ export const Navbar: React.FC = () => {
                 {user.role}
               </span>
 
-              {/* User Email */}
-              <span className="text-xs text-[#686D76] font-medium hidden sm:inline-block max-w-[160px] truncate">
-                {user.email}
+              {/* User Name */}
+              <span className="text-xs text-[#14161A] font-semibold hidden sm:inline-block max-w-[160px] truncate">
+                {user.email.toLowerCase().startsWith('admin')
+                  ? 'Admin'
+                  : user.email.toLowerCase().includes('meghana')
+                  ? 'Meghana Kondeti'
+                  : user.email.split('@')[0]}
               </span>
 
               {/* Admin switch shortcut if user has admin role */}

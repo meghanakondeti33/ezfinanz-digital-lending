@@ -36,6 +36,25 @@ export async function fetchKYC(applicationId: string): Promise<KYCData> {
   return response.data;
 }
 
+export async function uploadKYCDocument(
+  applicationId: string,
+  pdfFile: File
+): Promise<{ status: string; filename: string; uploaded_at: string; message: string }> {
+  const formData = new FormData();
+  formData.append('file', pdfFile, pdfFile.name);
+
+  const response = await apiClient.post<{ status: string; filename: string; uploaded_at: string; message: string }>(
+    `/loans/applications/${applicationId}/kyc/document`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+  return response.data;
+}
+
 export async function submitBankAccount(
   applicationId: string,
   payload: BankAccountSubmitPayload
@@ -61,6 +80,26 @@ export async function submitSelfie(
   const response = await apiClient.post<SelfieData>(
     `/loans/applications/${applicationId}/selfie`,
     payload
+  );
+  return response.data;
+}
+
+export async function uploadSelfie(
+  applicationId: string,
+  imageFileOrBlob: Blob | File,
+  filename: string = 'camera_capture.jpg'
+): Promise<SelfieData> {
+  const formData = new FormData();
+  formData.append('file', imageFileOrBlob, filename);
+
+  const response = await apiClient.post<SelfieData>(
+    `/loans/applications/${applicationId}/selfie/upload`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
   );
   return response.data;
 }

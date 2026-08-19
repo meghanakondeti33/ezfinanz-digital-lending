@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   fetchAdminApplicationDetail,
+  reviewAdminSelfie,
   submitAdminDecision,
 } from '../../lib/admin-api';
+import apiClient from '../../lib/api-client';
 import {
   confirmAdminDisbursement,
   fetchAdminDisbursement,
@@ -36,7 +38,14 @@ export const AdminApplicationReview: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Photo Review State
-  const [photoApproved, setPhotoApproved] = useState<boolean>(true);
+  const [photoImageUrl, setPhotoImageUrl] = useState<string | null>(null);
+  const [isReviewingPhoto, setIsReviewingPhoto] = useState<boolean>(false);
+  const [showFullScreenPhotoModal, setShowFullScreenPhotoModal] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [showRetakeModal, setShowRetakeModal] = useState<boolean>(false);
+  const [retakeReason, setRetakeReason] = useState<string>(
+    'Please submit a clearer photo with your face fully visible.'
+  );
 
   // Decision Modals
   const [showApproveModal, setShowApproveModal] = useState<boolean>(false);
@@ -45,11 +54,58 @@ export const AdminApplicationReview: React.FC = () => {
   const [adminRemarks, setAdminRemarks] = useState<string>('');
   const [submittingDecision, setSubmittingDecision] = useState<boolean>(false);
 
+  // KYC Review Modals
+  const [showKycRejectModal, setShowKycRejectModal] = useState<boolean>(false);
+  const [kycRejectReason, setKycRejectReason] = useState<string>('Please upload a clearer, uncropped document.');
+  const [isReviewingKyc, setIsReviewingKyc] = useState<boolean>(false);
+
   // Disbursement Modals
   const [showDisburseModal, setShowDisburseModal] = useState<boolean>(false);
   const [showConfirmDisburseModal, setShowConfirmDisburseModal] = useState<boolean>(false);
   const [disburseRemarks, setDisburseRemarks] = useState<string>('');
   const [processingDisbursement, setProcessingDisbursement] = useState<boolean>(false);
+
+  // Keyboard shortcut listener for Escape key to close modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showFullScreenPhotoModal) setShowFullScreenPhotoModal(false);
+        if (showRetakeModal) setShowRetakeModal(false);
+        if (showApproveModal) setShowApproveModal(false);
+        if (showRejectModal) setShowRejectModal(false);
+        if (showKycRejectModal) setShowKycRejectModal(false);
+        if (showDisburseModal) setShowDisburseModal(false);
+        if (showConfirmDisburseModal) setShowConfirmDisburseModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    showFullScreenPhotoModal,
+    showRetakeModal,
+    showApproveModal,
+    showRejectModal,
+    showKycRejectModal,
+    showDisburseModal,
+    showConfirmDisburseModal,
+  ]);
+
+  // Fetch photo binary securely
+  useEffect(() => {
+    if (application?.id) {
+      apiClient
+        .get(`/loans/applications/${application.id}/verification/live-photo`, {
+          responseType: 'blob',
+        })
+        .then((res) => {
+          const url = URL.createObjectURL(res.data);
+          setPhotoImageUrl(url);
+        })
+        .catch((err) => {
+          console.warn('Could not load live photo blob:', err);
+        });
+    }
+  }, [application?.id]);
 
   const loadDetail = async () => {
     if (!id) return;
@@ -156,9 +212,87 @@ export const AdminApplicationReview: React.FC = () => {
       setDisburseRemarks('');
       await loadDetail();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to confirm settlement.'));
+      setError(extractErrorMessage(err, 'Failed to complete disbursement.'));
     } finally {
       setProcessingDisbursement(false);
+    }
+  };
+
+  const handleApprovePhoto = async () => {
+    if (!id) return;
+    try {
+      setIsReviewingPhoto(true);
+      setError(null);
+      await reviewAdminSelfie(id, 'APPROVE');
+      setSuccess('✓ Customer live photo approved successfully.');
+      await loadDetail();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to approve customer live photo.'));
+    } finally {
+      setIsReviewingPhoto(false);
+    }
+  };
+
+  const handleRequestRetake = async () => {
+    if (!id) return;
+    try {
+      setIsReviewingPhoto(true);
+      setError(null);
+      await reviewAdminSelfie(id, 'REQUEST_RETAKE', retakeReason);
+      setSuccess('⚠️ Retake requested. Customer notified to submit a new clear photo.');
+      setShowRetakeModal(false);
+      await loadDetail();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to request photo retake.'));
+    } finally {
+      setIsReviewingPhoto(false);
+    }
+  };
+
+  const handleViewKycDocument = async () => {
+    if (!application?.id) return;
+    try {
+      const res = await apiClient.get(`/loans/applications/${application.id}/verification/kyc-document`, {
+        responseType: 'blob',
+      });
+      const fileUrl = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(fileUrl, '_blank');
+    } catch (err: any) {
+      setError('Could not open KYC document. Please ensure a valid document is uploaded.');
+    }
+  };
+
+  const handleApproveKycDocument = async () => {
+    if (!id) return;
+    try {
+      setIsReviewingKyc(true);
+      setError(null);
+      await apiClient.post(`/admin/applications/${id}/kyc/review`, { action: 'APPROVE' });
+      setSuccess('✓ KYC supporting document approved successfully.');
+      await loadDetail();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to approve KYC document.'));
+    } finally {
+      setIsReviewingKyc(false);
+    }
+  };
+
+  const handleRejectKycDocument = async () => {
+    if (!id) return;
+    try {
+      setIsReviewingKyc(true);
+      setError(null);
+      await apiClient.post(`/admin/applications/${id}/kyc/review`, {
+        action: 'REJECT',
+        reason: kycRejectReason,
+      });
+      setSuccess('⚠️ KYC document rejected. Customer requested to upload a new document.');
+      setShowKycRejectModal(false);
+      await loadDetail();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to reject KYC document.'));
+    } finally {
+      setIsReviewingKyc(false);
     }
   };
 
@@ -363,80 +497,245 @@ export const AdminApplicationReview: React.FC = () => {
           {/* Right Column: Verification Dossier, Photo Review & Audit Log */}
           <div className="space-y-6">
             {/* 4-Point Verification Checklist */}
-            <Card variant="default" padding="lg" className="space-y-3 bg-white">
+            <Card variant="default" padding="lg" className="space-y-4 bg-white">
               <CardHeader
                 tagline="Risk Verification"
-                title="Customer Verification"
+                title="Customer Verification Dossier"
               />
 
-              <div className="space-y-2 text-sm">
+              {/* 1. KYC Details & Supporting Document */}
+              <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-[#14161A] flex items-center gap-1.5">
+                    <span>1. KYC Identity</span>
+                    <span className="text-xs text-[#686D76]">({application.verification.kyc?.id_type || 'ID'})</span>
+                  </span>
+                  <span className="font-mono text-xs text-[#686D76]">
+                    {application.verification.kyc?.id_number_masked || 'XXXX-XXXX-****'}
+                  </span>
+                </div>
+
+                {application.verification.kyc && (
+                  <div className="grid grid-cols-2 gap-2 text-xs text-[#686D76] pt-1 border-t border-[#E5E2DC]">
+                    <div>Name: <strong className="text-[#14161A]">{application.verification.kyc.full_name}</strong></div>
+                    <div>DOB: <strong className="text-[#14161A]">{application.verification.kyc.date_of_birth}</strong></div>
+                    <div className="col-span-2">
+                      Address: <strong className="text-[#14161A]">{application.verification.kyc.address_line_1}, {application.verification.kyc.city}</strong>
+                    </div>
+                  </div>
+                )}
+
+                {/* Supporting PDF Document Details */}
+                <div className="pt-2 border-t border-[#E5E2DC] flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[#14161A] flex items-center gap-1">
+                      <span>📄</span> Document:
+                      <span className="font-normal text-[#686D76]">
+                        {application.verification.kyc?.document_filename || 'No document uploaded'}
+                      </span>
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
+                        application.verification.kyc?.document_status === 'KYC_VERIFIED'
+                          ? 'bg-[#E8F2EE] text-[#1E5C4A]'
+                          : application.verification.kyc?.document_status === 'KYC_REJECTED'
+                          ? 'bg-[#FBEFEC] text-[#8C3A32]'
+                          : 'bg-[#F9F3EE] text-[#B5652D]'
+                      }`}
+                    >
+                      {application.verification.kyc?.document_status?.replace(/_/g, ' ') || 'Pending'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleViewKycDocument}
+                      className="px-2.5 py-1 bg-white border border-[#D4D0C7] hover:border-[#B5652D] rounded-lg text-xs font-semibold text-[#14161A] flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                    >
+                      <span>👁️</span> View Document (PDF)
+                    </button>
+
+                    {isUnderReview && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleApproveKycDocument}
+                          disabled={isReviewingKyc}
+                          className="px-2.5 py-1 bg-[#E8F2EE] hover:bg-[#D3E8DF] border border-[#C5E0D5] text-[#1E5C4A] rounded-lg text-xs font-bold cursor-pointer transition-all"
+                        >
+                          ✓ Approve Doc
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowKycRejectModal(true)}
+                          disabled={isReviewingKyc}
+                          className="px-2.5 py-1 bg-[#FBEFEC] hover:bg-[#F6DDD8] border border-[#F0D0CB] text-[#8C3A32] rounded-lg text-xs font-bold cursor-pointer transition-all"
+                        >
+                          ⚠️ Request Replace
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Destination Bank Account */}
+              <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-[#14161A] flex items-center gap-1.5">
+                    <span>2. Disbursement Bank</span>
+                  </span>
+                  <span className="text-xs font-bold text-[#1E5C4A] bg-[#E8F2EE] px-2 py-0.5 rounded-full border border-[#C5E0D5]">
+                    ✓ Verified
+                  </span>
+                </div>
+
+                {application.verification.bank_account ? (
+                  <div className="grid grid-cols-2 gap-2 text-xs text-[#686D76] pt-1">
+                    <div>Bank: <strong className="text-[#14161A]">{application.verification.bank_account.bank_name}</strong></div>
+                    <div>IFSC: <strong className="text-[#14161A] font-mono">{application.verification.bank_account.ifsc}</strong></div>
+                    <div>Account: <strong className="text-[#14161A] font-mono">{application.verification.bank_account.account_number_masked}</strong></div>
+                    <div>Holder: <strong className="text-[#14161A]">{application.verification.bank_account.account_holder_name}</strong></div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#8A8D93]">Bank details pending customer submission.</p>
+                )}
+              </div>
+
+              {/* 3 & 4. Live Photo & Declaration Summary */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                  <span className="font-semibold text-[#14161A]">1. KYC ID Document</span>
-                  <span className="text-[#1E5C4A] font-bold">✓ Verified</span>
+                  <span className="font-semibold text-[#14161A]">3. Live Photo</span>
+                  <span className="text-[#1E5C4A] font-bold">
+                    {application.verification.selfie?.status === 'PHOTO_APPROVED' ? '✓ Approved' : 'Submitted'}
+                  </span>
                 </div>
                 <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                  <span className="font-semibold text-[#14161A]">2. Bank Account</span>
-                  <span className="text-[#1E5C4A] font-bold">✓ Verified</span>
-                </div>
-                <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                  <span className="font-semibold text-[#14161A]">3. Live Photo / Selfie</span>
-                  <span className="text-[#1E5C4A] font-bold">✓ Verified</span>
-                </div>
-                <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                  <span className="font-semibold text-[#14161A]">4. Legal Declaration</span>
+                  <span className="font-semibold text-[#14161A]">4. Declaration</span>
                   <span className="text-[#1E5C4A] font-bold">✓ Accepted</span>
                 </div>
               </div>
             </Card>
 
-            {/* Standalone Live Photo / Selfie Review (Challenge Requirement 3) */}
-            <Card variant="default" padding="lg" className="space-y-3 bg-white">
-              <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] font-mono">
-                  Live Photo Review
-                </span>
-                <span className={`text-xs font-bold ${photoApproved ? 'text-[#1E5C4A]' : 'text-[#8C3A32]'}`}>
-                  {photoApproved ? '✓ Photo Approved' : '⚠️ Flagged'}
-                </span>
+            {/* Real Live Photo / Selfie Review Card */}
+            <Card variant="default" padding="lg" className="space-y-4 bg-white">
+              <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-2.5">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] font-mono block">
+                    LIVE PHOTO VERIFICATION
+                  </span>
+                  <span className="text-[11px] text-[#686D76]">
+                    Submitted:{' '}
+                    {application.verification.selfie?.submitted_at
+                      ? new Date(application.verification.selfie.submitted_at).toLocaleString('en-IN')
+                      : 'Recently'}
+                  </span>
+                </div>
+                <div>
+                  {application.verification.selfie?.status === 'PHOTO_APPROVED' ||
+                  application.verification.selfie?.status === 'VERIFIED' ? (
+                    <span className="text-xs font-bold px-2.5 py-1 bg-[#E8F5E9] text-[#1E5C4A] rounded-full border border-[#C5E0D5]">
+                      ✓ Photo Approved
+                    </span>
+                  ) : application.verification.selfie?.status === 'PHOTO_RETAKE_REQUIRED' ? (
+                    <span className="text-xs font-bold px-2.5 py-1 bg-[#FBEFEC] text-[#8C3A32] rounded-full border border-[#F0D0CB]">
+                      ⚠️ Retake Required
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold px-2.5 py-1 bg-[#F9F3EE] text-[#B5652D] rounded-full border border-[#ECCBB3]">
+                      ⏳ Pending Review
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="p-4 bg-[#F9F3EE] rounded-xl border border-[#ECCBB3] text-center space-y-2">
-                <div className="w-12 h-12 rounded-full bg-white border border-[#ECCBB3] flex items-center justify-center mx-auto text-xl text-[#9C4F1C]">
-                  📷
-                </div>
-                <span className="text-xs font-semibold text-[#14161A] block">
-                  Simulated Customer Live Capture
-                </span>
-                <span className="text-[11px] font-mono text-[#686D76] block">
-                  storage_key: selfies/{application.id.slice(0, 8)}_live_photo.jpg
-                </span>
-
-                {isUnderReview && (
-                  <div className="pt-2 flex justify-center gap-2">
+              {/* Photo Display */}
+              <div className="relative rounded-xl overflow-hidden bg-[#14161A] border border-[#E5E2DC] flex items-center justify-center min-h-[200px] group">
+                {photoImageUrl ? (
+                  <>
+                    <img
+                      src={photoImageUrl}
+                      alt="Customer Live Selfie"
+                      className="w-full h-56 object-contain bg-black/40 cursor-pointer"
+                      onClick={() => {
+                        setZoomLevel(1);
+                        setShowFullScreenPhotoModal(true);
+                      }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setPhotoApproved(true)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
-                        photoApproved
-                          ? 'bg-[#1E5C4A] text-white'
-                          : 'bg-white border border-[#D4D0C7] text-[#686D76]'
-                      }`}
+                      onClick={() => {
+                        setZoomLevel(1);
+                        setShowFullScreenPhotoModal(true);
+                      }}
+                      className="absolute top-2 right-2 px-2.5 py-1 bg-black/70 hover:bg-black/90 text-white rounded-lg text-xs font-semibold backdrop-blur-xs flex items-center gap-1 cursor-pointer transition-all border border-white/20 shadow-md"
                     >
-                      ✓ Approve Photo
+                      <span>🔍</span>
+                      <span>Full screen</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setPhotoApproved(false)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
-                        !photoApproved
-                          ? 'bg-[#8C3A32] text-white'
-                          : 'bg-white border border-[#D4D0C7] text-[#686D76]'
-                      }`}
-                    >
-                      Flag Issue
-                    </button>
+                  </>
+                ) : (
+                  <div className="text-center p-6 space-y-2">
+                    <div className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center mx-auto text-xl">
+                      📷
+                    </div>
+                    <span className="text-xs text-white/70 block">
+                      Loading customer live capture...
+                    </span>
                   </div>
                 )}
+              </div>
+
+              {photoImageUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setZoomLevel(1);
+                    setShowFullScreenPhotoModal(true);
+                  }}
+                  className="w-full text-xs flex items-center justify-center gap-1.5"
+                >
+                  🔍 View full photo
+                </Button>
+              )}
+
+              {/* Rejection / Retake Note if present */}
+              {application.verification.selfie?.rejection_reason && (
+                <div className="p-3 bg-[#FAF8F5] border border-[#F0D0CB] rounded-xl text-xs space-y-1">
+                  <span className="font-bold text-[#8C3A32] block">Retake Guidance:</span>
+                  <p className="text-[#686D76]">{application.verification.selfie.rejection_reason}</p>
+                </div>
+              )}
+
+              {/* Action Buttons for Credit Officer */}
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={isReviewingPhoto}
+                  onClick={handleApprovePhoto}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm ${
+                    application.verification.selfie?.status === 'PHOTO_APPROVED' ||
+                    application.verification.selfie?.status === 'VERIFIED'
+                      ? 'bg-[#1E5C4A] text-white'
+                      : 'bg-white border border-[#1E5C4A] text-[#1E5C4A] hover:bg-[#E8F5E9]'
+                  }`}
+                >
+                  ✓ Approve Photo
+                </button>
+                <button
+                  type="button"
+                  disabled={isReviewingPhoto}
+                  onClick={() => setShowRetakeModal(true)}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm ${
+                    application.verification.selfie?.status === 'PHOTO_RETAKE_REQUIRED'
+                      ? 'bg-[#8C3A32] text-white'
+                      : 'bg-white border border-[#8C3A32] text-[#8C3A32] hover:bg-[#FBEFEC]'
+                  }`}
+                >
+                  ⚠️ Request Retake
+                </button>
               </div>
             </Card>
 
@@ -464,6 +763,152 @@ export const AdminApplicationReview: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {/* Full-Screen Live Photo Review Modal / Lightbox */}
+      {showFullScreenPhotoModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col p-4 sm:p-6"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowFullScreenPhotoModal(false);
+            }
+          }}
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between border-b border-white/20 pb-3 mb-3 text-white">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center font-bold text-base">
+                📷
+              </span>
+              <div>
+                <h3 className="text-base sm:text-lg font-bold font-editorial">
+                  LIVE PHOTO VERIFICATION
+                </h3>
+                <p className="text-xs text-white/70">
+                  Application #{application.application_number} • {application.customer.full_name || application.customer.email}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Zoom Controls */}
+              <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/20 text-xs">
+                <button
+                  type="button"
+                  title="Zoom Out"
+                  disabled={zoomLevel <= 0.6}
+                  onClick={() => setZoomLevel((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
+                  className="px-2.5 py-1 hover:bg-white/20 rounded-lg text-white font-mono font-bold cursor-pointer disabled:opacity-40"
+                >
+                  –
+                </button>
+                <span className="px-2 font-mono text-white/90">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <button
+                  type="button"
+                  title="Zoom In"
+                  disabled={zoomLevel >= 3.0}
+                  onClick={() => setZoomLevel((z) => Math.min(3.0, Number((z + 0.25).toFixed(2))))}
+                  className="px-2.5 py-1 hover:bg-white/20 rounded-lg text-white font-mono font-bold cursor-pointer disabled:opacity-40"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  title="Reset Zoom"
+                  onClick={() => setZoomLevel(1)}
+                  className="px-2 py-1 ml-1 hover:bg-white/20 rounded-lg text-[10px] text-white/80 uppercase font-bold cursor-pointer"
+                >
+                  Reset
+                </button>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setShowFullScreenPhotoModal(false)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-lg cursor-pointer transition-all border border-white/20"
+                title="Close (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Full-Screen Image Viewport */}
+          <div className="flex-1 overflow-auto flex items-center justify-center p-2 min-h-[300px]">
+            {photoImageUrl ? (
+              <img
+                src={photoImageUrl}
+                alt="Customer Full Live Capture"
+                style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.15s ease-out' }}
+                className="max-h-[70vh] max-w-[90vw] object-contain rounded-xl shadow-2xl origin-center select-none"
+              />
+            ) : (
+              <div className="text-center text-white/60">Loading photo...</div>
+            )}
+          </div>
+
+          {/* Metadata & Actions Footer Bar */}
+          <div className="border-t border-white/20 pt-3 mt-2 flex flex-col sm:flex-row items-center justify-between gap-4 text-white">
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <div>
+                <span className="text-white/60 block uppercase font-mono text-[10px]">Submitted:</span>
+                <span className="font-semibold">
+                  {application.verification.selfie?.submitted_at
+                    ? new Date(application.verification.selfie.submitted_at).toLocaleString('en-IN', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })
+                    : 'Recently'}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-white/60 block uppercase font-mono text-[10px]">Status:</span>
+                <span className="font-bold text-amber-300 uppercase">
+                  {application.verification.selfie?.status?.replace(/_/g, ' ') || 'PENDING REVIEW'}
+                </span>
+              </div>
+
+              {application.verification.selfie?.rejection_reason && (
+                <div className="max-w-md">
+                  <span className="text-white/60 block uppercase font-mono text-[10px]">Previous Note:</span>
+                  <span className="text-rose-300 truncate block">
+                    {application.verification.selfie.rejection_reason}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Review Decision Actions */}
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                disabled={isReviewingPhoto}
+                onClick={() => {
+                  setShowRetakeModal(true);
+                }}
+                className="flex-1 sm:flex-initial py-2 px-4 rounded-xl text-xs font-bold bg-[#8C3A32] hover:bg-[#A3433B] text-white cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md"
+              >
+                ⚠️ Request Retake
+              </button>
+              <button
+                type="button"
+                disabled={isReviewingPhoto}
+                onClick={async () => {
+                  await handleApprovePhoto();
+                  setShowFullScreenPhotoModal(false);
+                }}
+                className="flex-1 sm:flex-initial py-2 px-5 rounded-xl text-xs font-bold bg-[#1E5C4A] hover:bg-[#164436] text-white cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md"
+              >
+                ✓ Approve Photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Underwriter Approval Modal */}
       {showApproveModal && (
@@ -508,6 +953,105 @@ export const AdminApplicationReview: React.FC = () => {
               </Button>
               <Button variant="danger" size="md" isLoading={submittingDecision} onClick={handleReject}>
                 Confirm Rejection →
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Underwriter Live Photo Retake Request Modal */}
+      {showRetakeModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <h3 className="text-xl font-bold text-[#8C3A32] font-editorial">Request Photo Retake</h3>
+            <p className="text-sm text-[#686D76]">
+              Instruct the applicant to retake and resubmit their live photo. Specify instructions:
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#14161A] block">Common reasons:</label>
+              <select
+                onChange={(e) => {
+                  if (e.target.value !== 'Other') {
+                    setRetakeReason(e.target.value);
+                  }
+                }}
+                className="w-full bg-white border border-[#D4D0C7] rounded-xl p-2 text-xs text-[#14161A]"
+              >
+                <option value="Please submit a clearer photo with your face fully visible.">Please submit a clearer photo with your face fully visible.</option>
+                <option value="Face is not clearly visible">Face is not clearly visible</option>
+                <option value="Image is too dark">Image is too dark</option>
+                <option value="Photo is blurry">Photo is blurry</option>
+                <option value="Face is partially outside the frame">Face is partially outside the frame</option>
+                <option value="Other">Other (custom note below)</option>
+              </select>
+            </div>
+            <textarea
+              rows={3}
+              value={retakeReason}
+              onChange={(e) => setRetakeReason(e.target.value)}
+              placeholder="e.g. Please take a clear photo in good lighting with your face fully visible."
+              className="w-full bg-white border border-[#D4D0C7] rounded-xl p-3 text-sm text-[#14161A] focus:outline-none focus:border-[#B5652D]"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowRetakeModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                isLoading={isReviewingPhoto}
+                onClick={handleRequestRetake}
+              >
+                Send Retake Request →
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Underwriter KYC Document Reject / Replacement Request Modal */}
+      {showKycRejectModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <h3 className="text-xl font-bold text-[#8C3A32] font-editorial">Request KYC Document Replacement</h3>
+            <p className="text-sm text-[#686D76]">
+              Instruct the applicant to upload a replacement KYC document. Specify rejection reason:
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#14161A] block">Reason:</label>
+              <select
+                onChange={(e) => {
+                  if (e.target.value !== 'Other') {
+                    setKycRejectReason(e.target.value);
+                  }
+                }}
+                className="w-full bg-white border border-[#D4D0C7] rounded-xl p-2 text-xs text-[#14161A]"
+              >
+                <option value="Please upload a clearer, uncropped document.">Please upload a clearer, uncropped document.</option>
+                <option value="Document text is unreadable or blurry.">Document text is unreadable or blurry.</option>
+                <option value="Document name does not match applicant profile.">Document name does not match applicant profile.</option>
+                <option value="Document is expired.">Document is expired.</option>
+                <option value="Other">Other (custom note below)</option>
+              </select>
+            </div>
+            <textarea
+              rows={3}
+              value={kycRejectReason}
+              onChange={(e) => setKycRejectReason(e.target.value)}
+              placeholder="e.g. Please upload a clear color PDF copy of your Aadhaar or PAN card."
+              className="w-full bg-white border border-[#D4D0C7] rounded-xl p-3 text-sm text-[#14161A] focus:outline-none focus:border-[#B5652D]"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowKycRejectModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                isLoading={isReviewingKyc}
+                onClick={handleRejectKycDocument}
+              >
+                Reject & Request Replacement →
               </Button>
             </div>
           </Card>

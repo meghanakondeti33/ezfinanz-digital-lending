@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, type GoogleAuthPayload } from '../context/AuthContext';
 import { extractErrorMessage } from '../lib/error-utils';
@@ -9,26 +9,129 @@ import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
-  const { register, loginWithGoogle } = useAuth();
+  const { register, loginWithGoogle, sendMobileOtp, verifyMobileOtp } = useAuth();
 
+  // Step 1: Contact Information
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Simulated Phone OTP Verification Modal
+  // Step 2: Mobile OTP State
   const [showOtpModal, setShowOtpModal] = useState(false);
-  const [otpCode, setOtpCode] = useState('123456');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [demoOtpHint, setDemoOtpHint] = useState<string | null>(null);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | null>(null);
+  const [isSubmittingRegistration, setIsSubmittingRegistration] = useState(false);
 
-  const handleInitialSubmit = (e: React.FormEvent) => {
+  // Resend Countdown Timer
+  useEffect(() => {
+    let timer: any = null;
+    if (resendCountdown > 0) {
+      timer = setInterval(() => {
+        setResendCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [resendCountdown]);
+
+  const validateMobileNumber = (val: string): boolean => {
+    return /^[6-9]\d{9}$/.test(val.trim());
+  };
+
+  const handleRequestOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setOtpError(null);
+
+    const cleanPhone = phone.trim();
+
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!validateMobileNumber(cleanPhone)) {
+      setError('Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    try {
+      const response = await sendMobileOtp(cleanPhone);
+      setResendCountdown(response.resend_cooldown || 60);
+      setDemoOtpHint(response.demo_otp || null);
+      setOtpCode('');
+      setShowOtpModal(true);
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to send verification code. Please try again.'));
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCountdown > 0 || isSendingOtp) return;
+    setOtpError(null);
+    setIsSendingOtp(true);
+    try {
+      const response = await sendMobileOtp(phone.trim());
+      setResendCountdown(response.resend_cooldown || 60);
+      setDemoOtpHint(response.demo_otp || null);
+    } catch (err: any) {
+      setOtpError(extractErrorMessage(err, 'Failed to resend verification code. Please try again.'));
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError(null);
+
+    const cleanOtp = otpCode.trim();
+
+    if (!cleanOtp) {
+      setOtpError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    if (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)) {
+      setOtpError('Verification code must be exactly 6 numeric digits.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    try {
+      const result = await verifyMobileOtp(phone.trim(), cleanOtp);
+      if (result.verified) {
+        setIsPhoneVerified(true);
+        setPhoneVerificationToken(result.phone_verification_token);
+        setShowOtpModal(false);
+      } else {
+        setOtpError('Verification failed. Please check the code and try again.');
+      }
+    } catch (err: any) {
+      setOtpError(extractErrorMessage(err, 'Invalid verification code. Please try again.'));
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const handleFinalRegistration = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match. Please re-enter your password.');
+    if (!isPhoneVerified || !phoneVerificationToken) {
+      setError('Please verify your mobile number with the SMS code first.');
       return;
     }
 
@@ -37,42 +140,38 @@ export const Register: React.FC = () => {
       return;
     }
 
-    if (!/^[6-9]\d{9}$/.test(phone.trim())) {
-      setError('Please enter a valid 10-digit Indian mobile number starting with 6-9.');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please re-enter your password.');
       return;
     }
 
-    // Open simulated Phone OTP modal for 2-step verification requirement
-    setShowOtpModal(true);
-  };
-
-  const handleConfirmRegistration = async () => {
-    setError(null);
-    setIsVerifyingOtp(true);
-
+    setIsSubmittingRegistration(true);
     try {
-      await register(email, phone, password);
-      setShowOtpModal(false);
+      await register(email.trim().toLowerCase(), phone.trim(), password, phoneVerificationToken);
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
-      setShowOtpModal(false);
-      setError(extractErrorMessage(err, 'Registration failed. Please verify your details.'));
+      setError(extractErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
-      setIsVerifyingOtp(false);
+      setIsSubmittingRegistration(false);
     }
   };
 
   const handleGoogleSuccess = async (payload: GoogleAuthPayload) => {
     setError(null);
-    setIsSubmitting(true);
     try {
       await loginWithGoogle(payload);
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Google registration failed. Please try again.'));
-    } finally {
-      setIsSubmitting(false);
     }
+  };
+
+  const formatMaskedPhone = (num: string) => {
+    const clean = num.trim();
+    if (clean.length === 10) {
+      return `+91 ${clean.slice(0, 2)}XXX XX${clean.slice(7)}`;
+    }
+    return `+91 ${clean}`;
   };
 
   return (
@@ -102,11 +201,10 @@ export const Register: React.FC = () => {
             </div>
           )}
 
-          {/* Real Google Identity Services Sign-In Button */}
+          {/* Google Identity Services Sign-In Button */}
           <GoogleSignInButton
             onSuccess={handleGoogleSuccess}
             onError={(msg) => setError(msg)}
-            isLoading={isSubmitting}
             buttonText="signup_with"
           />
 
@@ -116,63 +214,110 @@ export const Register: React.FC = () => {
             <div className="flex-1 h-px bg-[#E5E2DC]" />
           </div>
 
-          <form className="space-y-4" onSubmit={handleInitialSubmit}>
-            <Input
-              label="Email Address"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="borrower@example.com"
-              autoComplete="email"
-            />
-
-            <Input
-              label="Mobile Number"
-              type="tel"
-              required
-              maxLength={10}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="9876543210"
-              hint="10-digit Indian number"
-              autoComplete="tel"
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {!isPhoneVerified ? (
+            /* STEP 1: Phone & Email Submission */
+            <form className="space-y-4" onSubmit={handleRequestOtp}>
               <Input
-                label="Password"
-                type="password"
+                label="Email Address"
+                type="email"
                 required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min 8 chars"
-                autoComplete="new-password"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="borrower@example.com"
+                autoComplete="email"
               />
 
               <Input
-                label="Confirm"
-                type="password"
+                label="Mobile Number"
+                type="tel"
                 required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter"
-                autoComplete="new-password"
+                maxLength={10}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="9876543210"
+                hint="10-digit Indian mobile starting with 6-9"
+                autoComplete="tel"
               />
-            </div>
 
-            <div className="pt-2">
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                className="w-full text-base py-3"
-                isLoading={isSubmitting}
-              >
-                Verify mobile & create account →
-              </Button>
-            </div>
-          </form>
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  className="w-full text-base py-3"
+                  isLoading={isSendingOtp}
+                >
+                  Send verification code →
+                </Button>
+              </div>
+            </form>
+          ) : (
+            /* STEP 2: Password Setup after Mobile Verification */
+            <form className="space-y-4" onSubmit={handleFinalRegistration}>
+              <div className="p-3.5 bg-[#EDF7ED] border border-[#C8E6C9] rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base text-[#2E7D32]">✓</span>
+                  <div>
+                    <span className="text-xs font-bold text-[#1B5E20] block">Mobile Verified</span>
+                    <span className="text-xs text-[#2E7D32] font-mono">+91 {phone}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPhoneVerified(false);
+                    setPhoneVerificationToken(null);
+                  }}
+                  className="text-xs font-semibold text-[#686D76] hover:text-[#14161A] underline cursor-pointer"
+                >
+                  Change
+                </button>
+              </div>
+
+              <Input
+                label="Email Address"
+                type="email"
+                disabled
+                value={email}
+                className="bg-[#F7F5F1] opacity-80 cursor-not-allowed"
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <Input
+                  label="Password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Min 8 chars"
+                  autoComplete="new-password"
+                  autoFocus
+                />
+
+                <Input
+                  label="Confirm"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  className="w-full text-base py-3"
+                  isLoading={isSubmittingRegistration}
+                >
+                  Create customer account →
+                </Button>
+              </div>
+            </form>
+          )}
 
           {/* Footer Links */}
           <div className="border-t border-[#E5E2DC] pt-4 flex items-center justify-between text-xs sm:text-sm text-[#686D76]">
@@ -191,60 +336,116 @@ export const Register: React.FC = () => {
         {/* Security Notice */}
         <div className="mt-8 text-center text-xs text-[#8A8D93] flex items-center justify-center gap-1.5">
           <span>🔒</span>
-          <span>Argon2id Encrypted • Strict Data Confidentiality</span>
+          <span>Argon2id Encrypted • Real-time SMS Verification</span>
         </div>
       </div>
 
-      {/* Simulated Phone OTP Verification Modal */}
+      {/* Phone OTP Verification Modal */}
       {showOtpModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white shadow-xl">
             <div>
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                Phone Verification
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                  Mobile Verification
+                </span>
+                {demoOtpHint ? (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 bg-[#F9F3EE] text-[#B5652D] rounded-full border border-[#ECCBB3]">
+                    Demo Mode Active
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 bg-[#EDF7ED] text-[#2E7D32] rounded-full border border-[#C8E6C9]">
+                    SMS Sent
+                  </span>
+                )}
+              </div>
               <h3 className="text-xl font-bold text-[#14161A] font-editorial mt-1">
-                Enter 6-Digit SMS Code
+                Enter 6-Digit Code
               </h3>
               <p className="text-xs sm:text-sm text-[#686D76] mt-0.5">
-                We sent a simulated 6-digit code to <strong className="text-[#14161A] font-mono">+91 {phone}</strong>.
+                We've sent a 6-digit verification code to{' '}
+                <strong className="text-[#14161A] font-mono">{formatMaskedPhone(phone)}</strong>.
               </p>
             </div>
 
-            <div className="p-3.5 bg-[#F9F3EE] border border-[#ECCBB3] rounded-xl text-xs text-[#9C4F1C]">
-              <span>Demo hint: Simulated OTP code is </span>
-              <strong className="font-mono text-sm font-bold">123456</strong>
-            </div>
+            {otpError && (
+              <div className="p-3 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-xs flex items-center gap-2 font-medium">
+                <span>⚠️</span>
+                <span>{otpError}</span>
+              </div>
+            )}
 
-            <Input
-              label="Verification Code"
-              type="text"
-              maxLength={6}
-              value={otpCode}
-              onChange={(e) => setOtpCode(e.target.value)}
-              className="text-center font-mono text-xl tracking-widest"
-              required
-            />
+            {demoOtpHint && (
+              <div className="p-3.5 bg-[#F7F5F1] border border-[#E5E2DC] rounded-xl text-xs text-[#686D76] flex items-center justify-between">
+                <span>Demo mode: Code is <strong className="font-mono text-sm font-bold text-[#14161A]">{demoOtpHint}</strong></span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtpCode(demoOtpHint);
+                    setOtpError(null);
+                  }}
+                  className="text-xs font-bold text-[#B5652D] hover:underline cursor-pointer"
+                >
+                  Auto-fill
+                </button>
+              </div>
+            )}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowOtpModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                isLoading={isVerifyingOtp}
-                onClick={handleConfirmRegistration}
-              >
-                Confirm OTP & Finish →
-              </Button>
-            </div>
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <Input
+                label="6-Digit Verification Code"
+                type="text"
+                maxLength={6}
+                value={otpCode}
+                onChange={(e) => {
+                  setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  if (otpError) setOtpError(null);
+                }}
+                placeholder="• • • • • •"
+                className="text-center font-mono text-2xl tracking-widest"
+                required
+                autoFocus
+              />
+
+              <div className="flex items-center justify-between text-xs text-[#686D76] pt-1">
+                <span>Didn't receive the code?</span>
+                {resendCountdown > 0 ? (
+                  <span className="font-mono text-[#8A8D93]">Resend in {resendCountdown}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={isSendingOtp}
+                    className="font-bold text-[#B5652D] hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    Resend code
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5E2DC]">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowOtpModal(false);
+                    setOtpError(null);
+                  }}
+                  disabled={isVerifyingOtp}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  isLoading={isVerifyingOtp}
+                >
+                  Verify mobile number →
+                </Button>
+              </div>
+            </form>
           </Card>
         </div>
       )}

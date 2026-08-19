@@ -1,7 +1,13 @@
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type IDType = 'AADHAAR' | 'PAN' | 'PASSPORT' | 'DRIVING_LICENSE' | 'VOTER_ID';
 export type SelfieVerificationType = 'LIVE_PHOTO' | 'DOCUMENT_MATCH';
-export type SelfieVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
+export type SelfieVerificationStatus =
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'PHOTO_PENDING_REVIEW'
+  | 'PHOTO_APPROVED'
+  | 'PHOTO_RETAKE_REQUIRED';
 
 export interface KYCData {
   id: string;
@@ -17,6 +23,10 @@ export interface KYCData {
   id_type: IDType;
   id_number_masked: string;
   status: string;
+  document_status?: string | null;
+  document_filename?: string | null;
+  document_rejection_reason?: string | null;
+  document_uploaded_at?: string | null;
   created_at: string;
 }
 
@@ -58,6 +68,10 @@ export interface SelfieData {
   application_id: string;
   verification_type: SelfieVerificationType;
   status: SelfieVerificationStatus;
+  rejection_reason?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  photo_url?: string | null;
   submitted_at: string;
 }
 
@@ -84,7 +98,14 @@ export interface VerificationSummary {
   status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
   kyc: 'NOT_STARTED' | 'VERIFIED' | 'FAILED';
   bank_account: 'NOT_STARTED' | 'VERIFIED' | 'FAILED';
-  selfie: 'NOT_STARTED' | 'VERIFIED' | 'FAILED';
+  selfie:
+    | 'NOT_STARTED'
+    | 'PHOTO_PENDING_REVIEW'
+    | 'PHOTO_APPROVED'
+    | 'PHOTO_RETAKE_REQUIRED'
+    | 'VERIFIED'
+    | 'FAILED';
+  selfie_details?: SelfieData | null;
   declaration: 'NOT_STARTED' | 'ACCEPTED';
   is_ready_for_review: boolean;
 }

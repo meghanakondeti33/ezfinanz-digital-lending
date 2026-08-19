@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom';
 import {
   checkEligibility,
   createApplication,
@@ -10,6 +10,7 @@ import {
   updateDraft,
 } from '../lib/loans-api';
 import { fetchCustomerDisbursement } from '../lib/disbursement-api';
+import { fetchVerificationSummary } from '../lib/verification-api';
 import type {
   EligibilityCheck,
   LoanApplication,
@@ -17,6 +18,7 @@ import type {
   LoanOffer,
 } from '../types/loan';
 import type { DisbursementDetail } from '../types/disbursement';
+import type { VerificationSummary } from '../types/verification';
 import { VerificationWizard } from '../components/verification/VerificationWizard';
 import { extractErrorMessage } from '../lib/error-utils';
 import { Navbar } from '../components/navigation/Navbar';
@@ -57,6 +59,7 @@ export const LoanApplicationForm: React.FC = () => {
   const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
   const [offers, setOffers] = useState<LoanOffer[]>([]);
   const [disbursement, setDisbursement] = useState<DisbursementDetail | null>(null);
+  const [verifSummary, setVerifSummary] = useState<VerificationSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(!isNew);
   const [saving, setSaving] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -64,6 +67,8 @@ export const LoanApplicationForm: React.FC = () => {
   const [selectingOfferId, setSelectingOfferId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const [searchParams] = useSearchParams();
 
   // Form state
   const [requestedAmount, setRequestedAmount] = useState<string>('');
@@ -105,6 +110,14 @@ export const LoanApplicationForm: React.FC = () => {
       setDesignation(data.designation || '');
       setExistingDebt(data.existing_debt ? String(data.existing_debt) : '0');
       setRequestedTenureMonths(data.requested_tenure_months || 36);
+
+      // Load verification summary if offer is selected or under review
+      try {
+        const vSumm = await fetchVerificationSummary(appId);
+        setVerifSummary(vSumm);
+      } catch {
+        // Non-critical
+      }
 
       // If application has moved past submitted, fetch offers
       if (data.status === 'ELIGIBILITY_CHECKED' || data.status === 'OFFER_SELECTED' || data.status === 'UNDER_REVIEW' || data.status === 'APPROVED' || data.status === 'DISBURSEMENT_PROCESSING' || data.status === 'DISBURSED') {
@@ -582,20 +595,47 @@ export const LoanApplicationForm: React.FC = () => {
           </Card>
         )}
 
-        {/* 4. VERIFICATION PIPELINE (When Offer Selected and verifying) */}
-        {application && application.status === 'OFFER_SELECTED' && (
-          <VerificationWizard
-            applicationId={application.id}
-            onVerificationComplete={async () => {
-              const updated = await fetchApplication(application.id);
-              setApplication(updated);
-            }}
-          />
-        )}
+        {/* 4. VERIFICATION PIPELINE (When Offer Selected OR when retake requested / active) */}
+        {application &&
+          (application.status === 'OFFER_SELECTED' ||
+            searchParams.get('mode') === 'retake' ||
+            searchParams.get('step') === 'photo' ||
+            verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED') && (
+            <VerificationWizard
+              applicationId={application.id}
+              initialStep={
+                searchParams.get('mode') === 'retake' ||
+                searchParams.get('step') === 'photo' ||
+                verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
+                  ? 3
+                  : undefined
+              }
+              initialMode={
+                searchParams.get('mode') === 'retake' ||
+                verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
+                  ? 'retake'
+                  : undefined
+              }
+              onVerificationComplete={async () => {
+                const updated = await fetchApplication(application.id);
+                setApplication(updated);
+                try {
+                  const updatedVerif = await fetchVerificationSummary(application.id);
+                  setVerifSummary(updatedVerif);
+                } catch {}
+              }}
+            />
+          )}
 
-        {/* 5. CUSTOMER LOAN REVIEW DOSSIER (When Under Review, Approved, or Disbursed) */}
-        {isUnderReviewOrBeyond && application && (
-          <div className="space-y-6">
+        {/* 5. CUSTOMER LOAN REVIEW DOSSIER (When Under Review, Approved, or Disbursed AND not actively retaking photo) */}
+        {isUnderReviewOrBeyond &&
+          application &&
+          !(
+            searchParams.get('mode') === 'retake' ||
+            searchParams.get('step') === 'photo' ||
+            verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
+          ) && (
+            <div className="space-y-6">
             {/* Section A: YOUR SELECTED LOAN (Requirement 4) */}
             <Card variant="elevated" padding="lg" className="border-l-4 border-l-[#B5652D] bg-white space-y-5">
               <div className="border-b border-[#E5E2DC] pb-4">

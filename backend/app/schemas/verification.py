@@ -2,6 +2,7 @@
 Pydantic schemas for Customer Verification Pipeline (KYC, Bank, Selfie, Declaration).
 """
 
+import enum
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -41,9 +42,32 @@ class KYCResponse(BaseModel):
     id_type: IDType
     id_number_masked: str
     status: str = "VERIFIED"
+    document_status: Optional[str] = "KYC_NOT_SUBMITTED"
+    document_filename: Optional[str] = None
+    document_rejection_reason: Optional[str] = None
+    document_uploaded_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class KYCDocumentUploadResponse(BaseModel):
+    status: str
+    filename: str
+    uploaded_at: datetime
+    message: str
+
+
+class KYCDocumentReviewAction(str, enum.Enum):
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
+
+
+class KYCDocumentReviewRequest(BaseModel):
+    action: KYCDocumentReviewAction
+    reason: Optional[str] = Field(None, max_length=500, description="Rejection reason if rejected")
+
+    model_config = {"extra": "forbid"}
 
 
 class BankAccountSubmitRequest(BaseModel):
@@ -85,9 +109,29 @@ class SelfieResponse(BaseModel):
     application_id: uuid.UUID
     verification_type: SelfieVerificationType
     status: SelfieVerificationStatus
+    rejection_reason: Optional[str] = None
+    reviewed_by: Optional[uuid.UUID] = None
+    reviewed_at: Optional[datetime] = None
+    photo_url: Optional[str] = None
     submitted_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SelfieReviewAction(str, enum.Enum):
+    APPROVE = "APPROVE"
+    REQUEST_RETAKE = "REQUEST_RETAKE"
+
+
+class SelfieReviewRequest(BaseModel):
+    action: SelfieReviewAction
+    reason: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Reason when requesting a retake (e.g. Blurry photo, Face not centered)",
+    )
+
+    model_config = {"extra": "forbid"}
 
 
 class DeclarationSubmitRequest(BaseModel):
@@ -112,6 +156,7 @@ class VerificationSummaryResponse(BaseModel):
     status: str  # NOT_STARTED, IN_PROGRESS, COMPLETED
     kyc: str  # NOT_STARTED, VERIFIED, FAILED
     bank_account: str  # NOT_STARTED, VERIFIED, FAILED
-    selfie: str  # NOT_STARTED, VERIFIED, FAILED
+    selfie: str  # NOT_STARTED, PHOTO_PENDING_REVIEW, PHOTO_APPROVED, PHOTO_RETAKE_REQUIRED, VERIFIED
+    selfie_details: Optional[SelfieResponse] = None
     declaration: str  # NOT_STARTED, ACCEPTED
     is_ready_for_review: bool

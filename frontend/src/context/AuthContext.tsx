@@ -9,12 +9,27 @@ export interface User {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  email_verified: boolean;
   created_at: string;
 }
 
 export interface GoogleAuthPayload {
   credential?: string;
   access_token?: string;
+}
+
+export interface SendOtpResult {
+  message: string;
+  expires_in: number;
+  resend_cooldown: number;
+  otp_mode: 'demo' | 'sms';
+  demo_otp?: string;
+}
+
+export interface VerifyOtpResult {
+  verified: boolean;
+  message: string;
+  phone_verification_token: string;
 }
 
 interface AuthContextType {
@@ -24,7 +39,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
   loginWithGoogle: (payload: string | GoogleAuthPayload) => Promise<User>;
-  register: (email: string, phone: string, password: string) => Promise<void>;
+  sendMobileOtp: (phone: string) => Promise<SendOtpResult>;
+  verifyMobileOtp: (phone: string, otp: string) => Promise<VerifyOtpResult>;
+  register: (email: string, phone: string, password: string, phone_verification_token?: string) => Promise<void>;
   logout: () => void;
   refetchUser: () => Promise<void>;
 }
@@ -43,7 +60,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await apiClient.get<User>('/auth/me');
       setUser(response.data);
     } catch {
-      // If token is invalid or expired, clear local storage
       localStorage.removeItem(TOKEN_KEY);
       setToken(null);
       setUser(null);
@@ -70,7 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newToken = response.data.access_token;
       localStorage.setItem(TOKEN_KEY, newToken);
       setToken(newToken);
-      // Fetch user profile immediately
       const meResponse = await apiClient.get<User>('/auth/me', {
         headers: { Authorization: `Bearer ${newToken}` },
       });
@@ -89,7 +104,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newToken = response.data.access_token;
       localStorage.setItem(TOKEN_KEY, newToken);
       setToken(newToken);
-      // Fetch user profile immediately
       const meResponse = await apiClient.get<User>('/auth/me', {
         headers: { Authorization: `Bearer ${newToken}` },
       });
@@ -100,13 +114,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (email: string, phone: string, password: string) => {
+  const sendMobileOtp = async (phone: string): Promise<SendOtpResult> => {
+    const response = await apiClient.post<SendOtpResult>('/auth/send-mobile-otp', {
+      phone,
+    });
+    return response.data;
+  };
+
+  const verifyMobileOtp = async (phone: string, otp: string): Promise<VerifyOtpResult> => {
+    const response = await apiClient.post<VerifyOtpResult>('/auth/verify-mobile-otp', {
+      phone,
+      otp,
+    });
+    return response.data;
+  };
+
+  const register = async (
+    email: string,
+    phone: string,
+    password: string,
+    phone_verification_token?: string
+  ) => {
     setIsLoading(true);
     try {
       await apiClient.post('/auth/register', {
         email,
         phone,
         password,
+        phone_verification_token,
       });
       // Automatically login after successful registration
       await login(email, password);
@@ -130,6 +165,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         loginWithGoogle,
+        sendMobileOtp,
+        verifyMobileOtp,
         register,
         logout,
         refetchUser: fetchCurrentUser,

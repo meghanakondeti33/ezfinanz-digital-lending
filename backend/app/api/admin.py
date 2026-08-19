@@ -19,12 +19,18 @@ from app.schemas.admin import (
     AdminDecisionRequest,
     AdminDecisionResponse,
 )
+from app.schemas.verification import (
+    KYCDocumentReviewRequest,
+    SelfieResponse,
+    SelfieReviewRequest,
+)
 from app.services.admin_service import (
     get_admin_application_detail,
     get_admin_application_queue,
     get_admin_dashboard_stats,
     process_admin_underwriting_decision,
 )
+from app.services.verification_service import review_kyc_document, review_selfie_decision
 
 from app.schemas.disbursement import (
     DisbursementConfirmRequest,
@@ -163,4 +169,39 @@ def admin_get_disbursement_details(
     View complete post-approval financial details, schedule, and disbursement logs.
     """
     return get_disbursement_details(db, application_id, current_admin)
+
+
+@router.post(
+    "/applications/{application_id}/selfie/review",
+    response_model=SelfieResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Review customer live photo (Approve or Request Retake)",
+)
+def admin_review_selfie(
+    application_id: uuid.UUID,
+    payload: SelfieReviewRequest,
+    current_admin: User = Depends(require_role(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> SelfieResponse:
+    """
+    Perform underwriter visual review on customer's live photo.
+    """
+    return review_selfie_decision(db, current_admin, application_id, payload)
+
+
+@router.post(
+    "/applications/{application_id}/kyc/review",
+    status_code=status.HTTP_200_OK,
+    summary="Review customer KYC document (Approve or Reject)",
+)
+def admin_review_kyc_document(
+    application_id: uuid.UUID,
+    payload: KYCDocumentReviewRequest,
+    current_admin: User = Depends(require_role(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Perform underwriter review on customer's uploaded KYC supporting document.
+    """
+    return review_kyc_document(db, current_admin, application_id, payload.action.value, payload.reason)
 

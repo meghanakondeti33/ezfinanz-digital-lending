@@ -230,3 +230,26 @@ def test_normal_password_auth_and_rbac_still_work(client: TestClient, db_session
     # 3. RBAC isolation test (Customer gets 403 on admin endpoint)
     rbac_res = client.get("/api/v1/admin/applications", headers={"Authorization": f"Bearer {token}"})
     assert rbac_res.status_code == 403
+
+
+def test_verify_google_id_token_passes_clock_skew_tolerance():
+    """
+    Test that verify_google_id_token configures clock_skew_in_seconds=60
+    to tolerate slight client/server clock drifts.
+    """
+    from app.core.config import settings
+    from app.services.auth_service import verify_google_id_token
+
+    mock_payload = {
+        "iss": "https://accounts.google.com",
+        "aud": settings.GOOGLE_CLIENT_ID or "mock-aud",
+        "email": "clock.test@example.com",
+        "email_verified": True,
+    }
+
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=mock_payload) as mock_verify:
+        result = verify_google_id_token("fake-jwt-token")
+        assert result["email"] == "clock.test@example.com"
+        assert mock_verify.call_count == 1
+        _, kwargs = mock_verify.call_args
+        assert kwargs.get("clock_skew_in_seconds") == 60

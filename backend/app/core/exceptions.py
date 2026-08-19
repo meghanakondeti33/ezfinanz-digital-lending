@@ -53,6 +53,27 @@ class ConflictError(AppException):
         super().__init__(message=message, status_code=409)
 
 
+class RateLimitError(AppException):
+    """Rate limit exceeded."""
+
+    def __init__(self, message: str = "Too many requests. Please try again later."):
+        super().__init__(message=message, status_code=429)
+
+
+class InternalServerError(AppException):
+    """Internal server error."""
+
+    def __init__(self, message: str = "Internal server error"):
+        super().__init__(message=message, status_code=500)
+
+
+class ServiceUnavailableError(AppException):
+    """External service unavailable or unconfigured."""
+
+    def __init__(self, message: str = "Service temporarily unavailable. Please try again later."):
+        super().__init__(message=message, status_code=503)
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """
     Global handler for AppException and its subclasses.

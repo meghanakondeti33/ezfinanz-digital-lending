@@ -73,3 +73,30 @@ def require_role(allowed_role: UserRole) -> Callable:
         return current_user
 
     return role_checker
+
+
+async def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """
+    Optional authentication dependency. Returns User if valid token is provided, None otherwise.
+    """
+    if not credentials or not credentials.credentials:
+        return None
+
+    try:
+        token = credentials.credentials
+        payload = decode_access_token(token)
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            return None
+        user_id = uuid.UUID(user_id_str)
+        stmt = select(User).where(User.id == user_id)
+        user = db.execute(stmt).scalar_one_or_none()
+        if user and user.is_active:
+            return user
+    except Exception:
+        return None
+
+    return None

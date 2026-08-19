@@ -18,6 +18,7 @@ class UserResponse(BaseModel):
     phone: str
     role: UserRole
     is_active: bool
+    email_verified: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
