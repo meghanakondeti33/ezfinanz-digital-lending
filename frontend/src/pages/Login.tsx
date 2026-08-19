@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, type GoogleAuthPayload } from '../context/AuthContext';
 import { extractErrorMessage } from '../lib/error-utils';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Card } from '../components/ui/Card';
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +38,24 @@ export const Login: React.FC = () => {
         setError('Unknown role assigned to user. Access denied.');
       }
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Invalid email or password. Please try again.'));
+      setError(extractErrorMessage(err, 'Invalid email or password. Please verify your credentials.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (payload: GoogleAuthPayload) => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const authenticatedUser = await loginWithGoogle(payload);
+      if (authenticatedUser.role === 'ADMIN') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Google sign-in failed. Please try again or use email login.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -47,164 +68,132 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
-      {/* Background ambient gradient */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[350px] bg-gradient-to-b from-blue-600/10 via-emerald-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
-
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl">
+    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans selection:bg-[#B5652D]/20">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <Link to="/" className="inline-flex items-center gap-2 group">
-            <span className="text-3xl sm:text-4xl font-black tracking-tight text-white group-hover:opacity-90 transition-opacity">
-              EZ<span className="text-emerald-400">FINANZ</span>
+        <div className="text-center space-y-2 mb-8">
+          <Link to="/" className="inline-flex items-center gap-1.5 group">
+            <span className="text-3xl sm:text-4xl font-black tracking-tight text-[#14161A] font-editorial">
+              EZ<span className="text-[#B5652D]">FINANZ</span>
             </span>
           </Link>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-200">
-            Unified Lending & Underwriting Sign In
-          </h2>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Access your customer loan journey or credit underwriting workspace through our server-authorized gateway.
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] tracking-tight font-editorial">
+            Welcome back
+          </h1>
+          <p className="text-sm sm:text-base text-[#686D76] max-w-sm mx-auto">
+            Sign in to continue your loan journey.
           </p>
         </div>
 
-        {/* Main Card */}
-        <div className="mt-6 bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-          {/* Error Message */}
+        {/* Form Container */}
+        <Card variant="default" padding="lg" className="space-y-6 bg-white">
           {error && (
-            <div className="p-4 rounded-2xl bg-red-950/60 border border-red-800 text-red-300 text-xs flex items-center space-x-2 animate-shake">
-              <span className="text-base">⚠️</span>
+            <div className="p-4 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm flex items-center gap-2.5 font-medium">
+              <span className="shrink-0 text-base">⚠️</span>
               <span>{error}</span>
             </div>
           )}
 
-          {/* Unified Login Form */}
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all font-medium"
-              />
-            </div>
+          {/* Real Google Identity Services Sign-In Button */}
+          <GoogleSignInButton
+            onSuccess={handleGoogleSuccess}
+            onError={(msg) => setError(msg)}
+            isLoading={isSubmitting}
+            buttonText="continue_with"
+          />
 
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Password
-                </label>
-              </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-              />
-            </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[#E5E2DC]" />
+            <span className="text-xs font-semibold text-[#8A8D93] uppercase">Or with email</span>
+            <div className="flex-1 h-px bg-[#E5E2DC]" />
+          </div>
+
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <Input
+              label="Email Address"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
+              autoComplete="email"
+            />
+
+            <Input
+              label="Password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••••••"
+              autoComplete="current-password"
+            />
 
             <div className="pt-2">
-              <button
+              <Button
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 shadow-lg shadow-emerald-950/40 disabled:opacity-50 transition-all cursor-pointer"
+                variant="primary"
+                size="lg"
+                className="w-full text-base py-3"
+                isLoading={isSubmitting}
               >
-                {isSubmitting ? (
-                  <span className="flex items-center space-x-2">
-                    <svg className="animate-spin h-4 w-4 text-slate-950" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>Authenticating…</span>
-                  </span>
-                ) : (
-                  'Sign In to EZFINANZ →'
-                )}
-              </button>
+                Sign in to your account →
+              </Button>
             </div>
           </form>
 
-          {/* Demo Credentials Section for Technical Evaluator */}
-          <div className="border-t border-slate-800/80 pt-5 space-y-3">
+          {/* Quick Preset Selector for Development */}
+          <div className="border-t border-[#E5E2DC] pt-5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <span>⚡</span> Demo Accounts (Development Helper)
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#686D76]">
+                Demo Access
               </span>
-              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">
-                Auto-fill
-              </span>
+              <span className="text-xs text-[#8A8D93]">Click to auto-fill</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
-              {/* Customer Demo Tile */}
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => fillDemoCredentials('customer@ezfinanz.com', 'Password@123')}
-                className="p-3 bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-emerald-700/80 rounded-2xl transition-all text-left group"
+                className="p-3 bg-[#F7F5F1] hover:bg-[#EFECE6] border border-[#D4D0C7] rounded-xl transition-all text-left group cursor-pointer"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white group-hover:text-emerald-300">
-                    Customer Account
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-bold">Borrower</span>
-                </div>
-                <span className="text-[11px] text-slate-400 font-mono block mt-1 truncate">
+                <span className="text-xs font-bold text-[#14161A] block">Customer</span>
+                <span className="text-[11px] text-[#686D76] font-mono block mt-0.5 truncate">
                   customer@ezfinanz.com
-                </span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">
-                  Routes to Customer Dashboard
                 </span>
               </button>
 
-              {/* Admin Demo Tile */}
               <button
                 type="button"
                 onClick={() => fillDemoCredentials('admin@ezfinanz.com', 'AdminPass@123')}
-                className="p-3 bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-indigo-700/80 rounded-2xl transition-all text-left group"
+                className="p-3 bg-[#F7F5F1] hover:bg-[#EFECE6] border border-[#D4D0C7] rounded-xl transition-all text-left group cursor-pointer"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white group-hover:text-indigo-300">
-                    Credit Officer Account
-                  </span>
-                  <span className="text-[10px] text-indigo-400 font-bold">Admin</span>
-                </div>
-                <span className="text-[11px] text-slate-400 font-mono block mt-1 truncate">
+                <span className="text-xs font-bold text-[#14161A] block">Credit Officer</span>
+                <span className="text-[11px] text-[#686D76] font-mono block mt-0.5 truncate">
                   admin@ezfinanz.com
-                </span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">
-                  Routes to Underwriting Portal
                 </span>
               </button>
             </div>
-            <p className="text-[10px] text-slate-500 text-center">
-              Clicking a preset fills credentials in the form. Authorization is securely validated via backend Argon2id hashing and JWT role claims.
-            </p>
           </div>
 
-          {/* Footer Links */}
-          <div className="border-t border-slate-800/80 pt-4 flex items-center justify-between text-xs text-slate-400">
-            <Link to="/" className="hover:text-slate-200 transition-colors">
-              ← Home
+          {/* Navigation Links */}
+          <div className="border-t border-[#E5E2DC] pt-4 flex items-center justify-between text-xs sm:text-sm text-[#686D76]">
+            <Link to="/" className="hover:text-[#14161A] transition-colors">
+              ← Return Home
             </Link>
             <div>
-              New customer?{' '}
-              <Link to="/register" className="font-bold text-emerald-400 hover:text-emerald-300">
-                Register here
+              New to EZFINANZ?{' '}
+              <Link to="/register" className="font-semibold text-[#B5652D] hover:underline">
+                Create account
               </Link>
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Security badge */}
-        <div className="mt-6 text-center text-[11px] text-slate-500 flex items-center justify-center gap-2">
+        {/* Security footer */}
+        <div className="mt-8 text-center text-xs text-[#8A8D93] flex items-center justify-center gap-1.5">
           <span>🔒</span>
-          <span>Argon2id + JWT Encrypted • Strict Backend RBAC Authorization</span>
+          <span>Argon2id Encrypted • Strict Server-Side Authorization</span>
         </div>
       </div>
     </div>

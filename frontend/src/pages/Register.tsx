@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, type GoogleAuthPayload } from '../context/AuthContext';
 import { extractErrorMessage } from '../lib/error-utils';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Card } from '../components/ui/Card';
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -14,12 +18,17 @@ export const Register: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Simulated Phone OTP Verification Modal
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpCode, setOtpCode] = useState('123456');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError('Passwords do not match. Please re-enter your password.');
       return;
     }
 
@@ -28,149 +37,217 @@ export const Register: React.FC = () => {
       return;
     }
 
-    setIsSubmitting(true);
+    if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+      setError('Please enter a valid 10-digit Indian mobile number starting with 6-9.');
+      return;
+    }
+
+    // Open simulated Phone OTP modal for 2-step verification requirement
+    setShowOtpModal(true);
+  };
+
+  const handleConfirmRegistration = async () => {
+    setError(null);
+    setIsVerifyingOtp(true);
 
     try {
       await register(email, phone, password);
-      // New users are strictly CUSTOMER role and route to dashboard
+      setShowOtpModal(false);
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
+      setShowOtpModal(false);
       setError(extractErrorMessage(err, 'Registration failed. Please verify your details.'));
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (payload: GoogleAuthPayload) => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await loginWithGoogle(payload);
+      navigate('/dashboard', { replace: true });
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Google registration failed. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
-      {/* Background ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[350px] bg-gradient-to-b from-emerald-600/10 via-teal-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
-
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl">
+    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans selection:bg-[#B5652D]/20">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <Link to="/" className="inline-flex items-center gap-2 group">
-            <span className="text-3xl sm:text-4xl font-black tracking-tight text-white group-hover:opacity-90 transition-opacity">
-              EZ<span className="text-emerald-400">FINANZ</span>
+        <div className="text-center space-y-2 mb-8">
+          <Link to="/" className="inline-flex items-center gap-1.5 group">
+            <span className="text-3xl sm:text-4xl font-black tracking-tight text-[#14161A] font-editorial">
+              EZ<span className="text-[#B5652D]">FINANZ</span>
             </span>
           </Link>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-200">
-            Create Borrower Account
-          </h2>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Sign up to apply for personal loans, get instant eligibility decisions, and track disbursements.
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] tracking-tight font-editorial">
+            Create your account
+          </h1>
+          <p className="text-sm sm:text-base text-[#686D76] max-w-sm mx-auto">
+            Get started with your personal loan application in under two minutes.
           </p>
         </div>
 
         {/* Card */}
-        <div className="mt-6 bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <Card variant="default" padding="lg" className="space-y-6 bg-white">
           {error && (
-            <div className="p-4 rounded-2xl bg-red-950/60 border border-red-800 text-red-300 text-xs flex items-center space-x-2">
-              <span className="text-base">⚠️</span>
+            <div className="p-4 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm flex items-center gap-2.5 font-medium">
+              <span className="shrink-0 text-base">⚠️</span>
               <span>{error}</span>
             </div>
           )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
+          {/* Real Google Identity Services Sign-In Button */}
+          <GoogleSignInButton
+            onSuccess={handleGoogleSuccess}
+            onError={(msg) => setError(msg)}
+            isLoading={isSubmitting}
+            buttonText="signup_with"
+          />
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[#E5E2DC]" />
+            <span className="text-xs font-semibold text-[#8A8D93] uppercase">Or register with email</span>
+            <div className="flex-1 h-px bg-[#E5E2DC]" />
+          </div>
+
+          <form className="space-y-4" onSubmit={handleInitialSubmit}>
+            <Input
+              label="Email Address"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="borrower@example.com"
+              autoComplete="email"
+            />
+
+            <Input
+              label="Mobile Number"
+              type="tel"
+              required
+              maxLength={10}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="9876543210"
+              hint="10-digit Indian number"
+              autoComplete="tel"
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <Input
+                label="Password"
+                type="password"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="borrower@example.com"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min 8 chars"
+                autoComplete="new-password"
               />
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                10-Digit Mobile Number
-              </label>
-              <input
-                type="tel"
+              <Input
+                label="Confirm"
+                type="password"
                 required
-                maxLength={10}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="9876543210"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter"
+                autoComplete="new-password"
               />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min 8 characters"
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
-                />
-              </div>
             </div>
 
             <div className="pt-2">
-              <button
+              <Button
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 shadow-lg shadow-emerald-950/40 disabled:opacity-50 transition-all cursor-pointer"
+                variant="primary"
+                size="lg"
+                className="w-full text-base py-3"
+                isLoading={isSubmitting}
               >
-                {isSubmitting ? (
-                  <span className="flex items-center space-x-2">
-                    <svg className="animate-spin h-4 w-4 text-slate-950" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>Creating Account…</span>
-                  </span>
-                ) : (
-                  'Create Customer Account →'
-                )}
-              </button>
+                Verify mobile & create account →
+              </Button>
             </div>
           </form>
 
           {/* Footer Links */}
-          <div className="border-t border-slate-800/80 pt-4 flex items-center justify-between text-xs text-slate-400">
-            <Link to="/" className="hover:text-slate-200 transition-colors">
-              ← Home
+          <div className="border-t border-[#E5E2DC] pt-4 flex items-center justify-between text-xs sm:text-sm text-[#686D76]">
+            <Link to="/" className="hover:text-[#14161A] transition-colors">
+              ← Return Home
             </Link>
             <div>
-              Already registered?{' '}
-              <Link to="/login" className="font-bold text-emerald-400 hover:text-emerald-300">
-                Sign in here
+              Already have an account?{' '}
+              <Link to="/login" className="font-semibold text-[#B5652D] hover:underline">
+                Sign in
               </Link>
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Notice */}
-        <div className="mt-6 text-center text-[11px] text-slate-500">
-          All self-service registrations are provisioned as <span className="font-semibold text-slate-400">CUSTOMER</span> accounts. Underwriter access requires pre-authorized administrative credentials.
+        {/* Security Notice */}
+        <div className="mt-8 text-center text-xs text-[#8A8D93] flex items-center justify-center gap-1.5">
+          <span>🔒</span>
+          <span>Argon2id Encrypted • Strict Data Confidentiality</span>
         </div>
       </div>
+
+      {/* Simulated Phone OTP Verification Modal */}
+      {showOtpModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <div>
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                Phone Verification
+              </span>
+              <h3 className="text-xl font-bold text-[#14161A] font-editorial mt-1">
+                Enter 6-Digit SMS Code
+              </h3>
+              <p className="text-xs sm:text-sm text-[#686D76] mt-0.5">
+                We sent a simulated 6-digit code to <strong className="text-[#14161A] font-mono">+91 {phone}</strong>.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-[#F9F3EE] border border-[#ECCBB3] rounded-xl text-xs text-[#9C4F1C]">
+              <span>Demo hint: Simulated OTP code is </span>
+              <strong className="font-mono text-sm font-bold">123456</strong>
+            </div>
+
+            <Input
+              label="Verification Code"
+              type="text"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value)}
+              className="text-center font-mono text-xl tracking-widest"
+              required
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowOtpModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                isLoading={isVerifyingOtp}
+                onClick={handleConfirmRegistration}
+              >
+                Confirm OTP & Finish →
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

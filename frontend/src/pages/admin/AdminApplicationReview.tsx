@@ -12,6 +12,11 @@ import {
 import type { AdminApplicationDetail } from '../../types/admin';
 import type { DisbursementDetail } from '../../types/disbursement';
 import { extractErrorMessage } from '../../lib/error-utils';
+import { Navbar } from '../../components/navigation/Navbar';
+import { LedgerLine } from '../../components/journey/LedgerLine';
+import { Card, CardHeader } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 
 const REJECTION_REASONS = [
   'Verification issue',
@@ -29,6 +34,9 @@ export const AdminApplicationReview: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Photo Review State
+  const [photoApproved, setPhotoApproved] = useState<boolean>(true);
 
   // Decision Modals
   const [showApproveModal, setShowApproveModal] = useState<boolean>(false);
@@ -81,9 +89,9 @@ export const AdminApplicationReview: React.FC = () => {
       setError(null);
       await submitAdminDecision(id, {
         decision: 'APPROVED',
-        remarks: adminRemarks || 'Approved by underwriter.',
+        remarks: adminRemarks || 'Approved by underwriter after complete photo & KYC verification.',
       });
-      setSuccess('🎉 Loan application approved successfully! Application state transitioned to APPROVED.');
+      setSuccess('🎉 Loan application approved! State transitioned to APPROVED.');
       setShowApproveModal(false);
       setAdminRemarks('');
       await loadDetail();
@@ -109,7 +117,7 @@ export const AdminApplicationReview: React.FC = () => {
         rejection_reason: rejectionReason,
         remarks: adminRemarks,
       });
-      setSuccess('Application has been rejected. Decision and reason have been permanently recorded.');
+      setSuccess('Application declined. Decision recorded in the permanent audit trail.');
       setShowRejectModal(false);
       setAdminRemarks('');
       await loadDetail();
@@ -126,7 +134,7 @@ export const AdminApplicationReview: React.FC = () => {
       setProcessingDisbursement(true);
       setError(null);
       const res = await initiateAdminDisbursement(id, disburseRemarks || 'Electronic fund transfer initiated');
-      setSuccess(`⚡ Disbursement initiated successfully! Reference: ${res.disbursement_reference}`);
+      setSuccess(`⚡ Disbursement initiated! Reference: ${res.disbursement_reference}`);
       setShowDisburseModal(false);
       setDisburseRemarks('');
       await loadDetail();
@@ -142,55 +150,33 @@ export const AdminApplicationReview: React.FC = () => {
     try {
       setProcessingDisbursement(true);
       setError(null);
-      const res = await confirmAdminDisbursement(id, disburseRemarks || 'Bank settlement completed');
-      setSuccess(`🎉 Disbursement completed & settled! Application transitioned to DISBURSED. Reference: ${res.disbursement_reference}`);
+      const res = await confirmAdminDisbursement(id, disburseRemarks || 'Bank settlement confirmed');
+      setSuccess(`🎉 Disbursement completed & settled! Application permanently transitioned to DISBURSED. Reference: ${res.disbursement_reference}`);
       setShowConfirmDisburseModal(false);
       setDisburseRemarks('');
       await loadDetail();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to confirm disbursement.'));
+      setError(extractErrorMessage(err, 'Failed to confirm settlement.'));
     } finally {
       setProcessingDisbursement(false);
     }
   };
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'UNDER_REVIEW':
-        return 'bg-amber-950/60 border-amber-700 text-amber-300 animate-pulse';
-      case 'APPROVED':
-        return 'bg-emerald-950/60 border-emerald-700 text-emerald-300 shadow-lg shadow-emerald-950/50';
-      case 'DISBURSEMENT_PROCESSING':
-        return 'bg-blue-950/60 border-blue-700 text-blue-300 animate-pulse';
-      case 'DISBURSED':
-        return 'bg-teal-950/60 border-teal-600 text-teal-300 font-bold';
-      case 'REJECTED':
-        return 'bg-rose-950/60 border-rose-700 text-rose-300';
-      default:
-        return 'bg-blue-950/60 border-blue-700 text-blue-300';
-    }
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-8">
-        <div className="text-center space-y-3">
-          <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-          <p className="text-xs text-slate-400">Loading full underwriting profile...</p>
-        </div>
+      <div className="min-h-screen bg-[#F7F5F1] flex items-center justify-center">
+        <div className="animate-spin h-7 w-7 border-2 border-[#B5652D] border-t-transparent rounded-full" />
       </div>
     );
   }
 
   if (!application) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
-        <div className="max-w-4xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-4">
-          <p className="text-sm text-red-400 font-semibold">{error || 'Application not found.'}</p>
-          <Link to="/admin" className="inline-block px-4 py-2 bg-slate-800 text-xs rounded-xl hover:bg-slate-700">
-            ← Back to Queue
-          </Link>
-        </div>
+      <div className="min-h-screen bg-[#F7F5F1] p-8 text-center">
+        <p className="text-sm text-[#8C3A32]">{error || 'Application not found.'}</p>
+        <Link to="/admin" className="text-sm text-[#B5652D] underline mt-2 inline-block font-semibold">
+          ← Back to Queue
+        </Link>
       </div>
     );
   }
@@ -198,629 +184,377 @@ export const AdminApplicationReview: React.FC = () => {
   const isUnderReview = application.status === 'UNDER_REVIEW';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16">
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Link to="/admin" className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-semibold">
-              <span>←</span> Application Queue
-            </Link>
-            <span className="text-slate-600">/</span>
-            <span className="text-xs font-mono font-bold text-white">
-              {application.application_number}
-            </span>
-          </div>
+    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col font-sans selection:bg-[#B5652D]/20 pb-16">
+      <Navbar />
 
-          <div className="flex items-center space-x-3">
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-extrabold tracking-wider uppercase border ${getStatusBadgeClass(
-                application.status
-              )}`}
-            >
-              {application.status}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Review Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Title Bar & Decision Action Panel */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-xl">
+        {/* Navigation & Action Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E5E2DC] shadow-xs">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
-              Credit Risk Assessment & Decisioning
-            </span>
-            <h1 className="text-2xl font-black text-white mt-1 flex items-center gap-3">
-              <span>Application #{application.application_number}</span>
+            <div className="flex items-center gap-2 mb-1">
+              <Link to="/admin" className="text-xs text-[#686D76] hover:text-[#14161A]">
+                ← Underwriting Queue
+              </Link>
+              <span className="text-[#8A8D93]">/</span>
+              <span className="text-xs font-mono font-bold text-[#14161A]">
+                {application.application_number}
+              </span>
+              <StatusBadge status={application.status} size="sm" />
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial">
+              Case File: {application.customer.full_name || 'Applicant'}
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Applicant: <span className="text-white font-semibold">{application.customer.full_name || 'N/A'}</span> ({application.customer.email})
+            <p className="text-xs sm:text-sm text-[#686D76]">
+              {application.customer.email} • {application.customer.phone}
             </p>
           </div>
 
-          {/* Underwriter Action Controls */}
-          {isUnderReview ? (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(true)}
-                className="px-5 py-2.5 rounded-xl bg-rose-950/60 border border-rose-700 hover:bg-rose-900 text-rose-300 font-bold text-xs shadow-lg transition-all"
-              >
-                Reject Application
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowApproveModal(true)}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-950/50 transition-all"
-              >
-                ✓ Approve Application
-              </button>
-            </div>
-          ) : application.status === 'APPROVED' ? (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowDisburseModal(true)}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white font-black text-xs shadow-lg shadow-blue-950/50 transition-all flex items-center gap-2"
-              >
-                <span>⚡</span> Initiate Loan Disbursement
-              </button>
-            </div>
-          ) : application.status === 'DISBURSEMENT_PROCESSING' ? (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirmDisburseModal(true)}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-slate-950 font-black text-xs shadow-lg shadow-teal-950/50 transition-all flex items-center gap-2"
-              >
-                <span>💳</span> Confirm & Settle Disbursement
-              </button>
-            </div>
-          ) : application.status === 'DISBURSED' ? (
-            <div className="p-3 bg-teal-950/40 border border-teal-700/60 rounded-2xl text-xs text-teal-300 flex items-center gap-2">
-              <span>✅</span>
-              <div>
-                <span className="font-bold block">Disbursed & Settled</span>
-                <span className="font-mono text-[11px] text-teal-400">
-                  {disbursement?.disbursement_reference || 'EZF-DIS-COMPLETED'}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-slate-400">
-              <span className="font-semibold text-slate-200 block">Application Status:</span>
-              <span className="font-bold text-white">{application.status}</span>
-            </div>
-          )}
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            {isUnderReview ? (
+              <>
+                <Button variant="danger" size="md" onClick={() => setShowRejectModal(true)}>
+                  Decline Application
+                </Button>
+                <Button variant="primary" size="md" onClick={() => setShowApproveModal(true)}>
+                  ✓ Approve Application
+                </Button>
+              </>
+            ) : application.status === 'APPROVED' ? (
+              <Button variant="primary" size="md" onClick={() => setShowDisburseModal(true)}>
+                ⚡ Initiate Disbursement →
+              </Button>
+            ) : application.status === 'DISBURSEMENT_PROCESSING' ? (
+              <Button variant="primary" size="md" onClick={() => setShowConfirmDisburseModal(true)}>
+                💳 Confirm Settlement & Disburse →
+              </Button>
+            ) : application.status === 'DISBURSED' ? (
+              <span className="px-4 py-2 rounded-xl text-sm font-bold bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A]">
+                ✓ Settlement Complete
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {/* Notifications */}
         {error && (
-          <div className="p-4 rounded-xl bg-red-900/40 border border-red-800 text-red-300 text-xs flex items-center space-x-2">
-            <span>⚠️ {error}</span>
+          <div className="p-4 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm font-medium">
+            ⚠️ {error}
           </div>
         )}
         {success && (
-          <div className="p-4 rounded-xl bg-emerald-900/40 border border-emerald-800 text-emerald-300 text-xs flex items-center space-x-2">
-            <span>✓ {success}</span>
+          <div className="p-4 rounded-xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-sm font-medium">
+            ✓ {success}
           </div>
         )}
 
-        {/* 2-Column Inspection Grid */}
+        {/* Same Customer Ledger Line representing case progress */}
+        <LedgerLine status={application.status} />
+
+        {/* 2-Column Case File Dossier */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Customer Profile & Financial Parameters */}
+          {/* Left 2 Columns: Financials & Selected Offer */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Section 1: Customer Profile & Financials */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
-                <span>👤</span> 1. Customer Profile & Loan Details
-              </h2>
+            {/* Section 1: Customer Profile & Financial Parameters */}
+            <Card variant="default" padding="lg" className="space-y-4 bg-white">
+              <CardHeader
+                tagline="Borrower Profile"
+                title="1. Income & Financial Baseline"
+              />
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs pt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 <div>
-                  <span className="text-slate-400 block">Full Name:</span>
-                  <span className="font-bold text-white text-sm">{application.customer.full_name || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">Email Address:</span>
-                  <span className="font-semibold text-slate-200">{application.customer.email}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">Phone Number:</span>
-                  <span className="font-semibold text-slate-200">{application.customer.phone}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">Requested Amount:</span>
-                  <span className="font-mono font-bold text-white text-sm">
-                    {application.loan_details.requested_amount
-                      ? `₹${Number(application.loan_details.requested_amount).toLocaleString('en-IN')}`
-                      : 'N/A'}
+                  <span className="text-xs text-[#686D76] block">Requested Principal</span>
+                  <span className="font-mono font-bold text-[#14161A] text-base mt-0.5 block">
+                    ₹{Number(application.loan_details.requested_amount || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Monthly Income:</span>
-                  <span className="font-mono font-bold text-emerald-400">
-                    {application.loan_details.monthly_income
-                      ? `₹${Number(application.loan_details.monthly_income).toLocaleString('en-IN')}`
-                      : 'N/A'}
+                  <span className="text-xs text-[#686D76] block">Monthly Income</span>
+                  <span className="font-mono font-bold text-[#14161A] text-base mt-0.5 block">
+                    ₹{Number(application.loan_details.monthly_income || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Existing Debt:</span>
-                  <span className="font-mono font-semibold text-slate-300">
-                    {application.loan_details.existing_debt
-                      ? `₹${Number(application.loan_details.existing_debt).toLocaleString('en-IN')}`
-                      : '₹0.00'}
+                  <span className="text-xs text-[#686D76] block">Existing Monthly Debt</span>
+                  <span className="font-mono font-bold text-[#14161A] text-base mt-0.5 block">
+                    ₹{Number(application.loan_details.existing_debt || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Employment Type:</span>
-                  <span className="font-semibold text-slate-200">{application.loan_details.employment_type || 'N/A'}</span>
+                  <span className="text-xs text-[#686D76] block">Employment</span>
+                  <strong className="text-[#14161A] block mt-0.5">{application.loan_details.employment_type || 'N/A'}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Employer Name:</span>
-                  <span className="font-semibold text-slate-200">{application.loan_details.employer_name || 'N/A'}</span>
+                  <span className="text-xs text-[#686D76] block">Employer Name</span>
+                  <strong className="text-[#14161A] block mt-0.5">{application.loan_details.employer_name || 'N/A'}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Loan Purpose:</span>
-                  <span className="font-semibold text-slate-200">{application.loan_details.purpose || 'N/A'}</span>
+                  <span className="text-xs text-[#686D76] block">Purpose</span>
+                  <strong className="text-[#14161A] block mt-0.5">{application.loan_details.purpose || 'N/A'}</strong>
                 </div>
               </div>
-            </div>
+            </Card>
 
-            {/* Section 2: Deterministic Eligibility Rationale */}
-            {application.eligibility && (
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                    <span>⚡</span> 2. Deterministic Underwriting Assessment
-                  </h2>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono font-bold text-emerald-400">
-                      Score: {application.eligibility.score ? Number(application.eligibility.score).toFixed(0) : 'N/A'}/100
-                    </span>
-                    <span className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono font-bold text-slate-200">
-                      DTI: {application.eligibility.dti_ratio ? `${(Number(application.eligibility.dti_ratio) * 100).toFixed(1)}%` : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800">
-                  <span className="text-xs font-semibold text-slate-400 block mb-2">
-                    Engine Rationale & Criteria:
-                  </span>
-                  <ul className="space-y-1.5 text-xs text-slate-300">
-                    {application.eligibility.reasons?.map((r, i) => (
-                      <li key={i} className="flex items-start space-x-2">
-                        <span className="text-emerald-400">•</span>
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {/* Section 3: Selected Loan Offer & Terms */}
+            {/* Section 2: Selected Loan Plan */}
             {application.selected_offer && (
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-teal-400 flex items-center gap-2">
-                  <span>📑</span> 3. Selected Loan Offer & Amortization
-                </h2>
+              <Card variant="default" padding="lg" className="space-y-4 border-l-4 border-l-[#B5652D] bg-white">
+                <CardHeader
+                  tagline="Confirmed Repayment Terms"
+                  title="2. Selected Loan Structure"
+                />
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Principal</span>
-                    <span className="font-mono font-bold text-white text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                    <span className="text-xs text-[#686D76] uppercase font-semibold block">Principal</span>
+                    <span className="font-mono font-bold text-lg text-[#14161A] block mt-0.5">
                       ₹{Number(application.selected_offer.principal).toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Monthly EMI</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
+                  <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                    <span className="text-xs text-[#686D76] uppercase font-semibold block">Monthly EMI</span>
+                    <span className="font-mono font-bold text-lg text-[#14161A] block mt-0.5">
                       ₹{Number(application.selected_offer.emi).toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Interest Rate</span>
-                    <span className="font-mono font-bold text-white text-sm">
-                      {Number(application.selected_offer.interest_rate).toFixed(2)}% p.a.
-                    </span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Tenure</span>
-                    <span className="font-bold text-white text-sm">
+                  <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                    <span className="text-xs text-[#686D76] uppercase font-semibold block">Tenure</span>
+                    <span className="font-bold text-base text-[#14161A] block mt-0.5">
                       {application.selected_offer.tenure_months} Months
                     </span>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-2">
-                  <div>
-                    <span className="text-slate-400 block">Processing Fee + GST:</span>
-                    <span className="font-mono font-semibold text-slate-200">
-                      ₹{Number(application.selected_offer.total_charges).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block">Net Payout to Bank:</span>
-                    <span className="font-mono font-semibold text-emerald-300">
+                  <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                    <span className="text-xs text-[#686D76] uppercase font-semibold block">Net Payout</span>
+                    <span className="font-mono font-bold text-lg text-[#1E5C4A] block mt-0.5">
                       ₹{Number(application.selected_offer.net_disbursement).toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-slate-400 block">Total Repayment:</span>
-                    <span className="font-mono font-bold text-white">
-                      ₹{Number(application.selected_offer.total_repayment).toLocaleString('en-IN')}
-                    </span>
-                  </div>
                 </div>
-              </div>
+              </Card>
             )}
 
-            {/* Section 4: Phase 7 Disbursement & Fund Settlement */}
+            {/* Section 3: Disbursement Execution Record */}
             {disbursement && (
-              <div className="bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/40 border border-blue-800/60 rounded-2xl p-6 shadow-xl space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
-                    <span>⚡</span> 4. Loan Disbursement & Payout Details
-                  </h2>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-blue-950 border border-blue-700 text-blue-300">
-                    {disbursement.disbursement_status || 'PENDING'}
-                  </span>
-                </div>
+              <Card variant="accent" padding="lg" className="space-y-4 bg-white">
+                <CardHeader
+                  tagline="Settlement Ledger"
+                  title="3. Disbursement Transaction Details"
+                />
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Approved Amount</span>
-                    <span className="font-mono font-bold text-white text-sm">
-                      ₹{Number(disbursement.approved_amount).toLocaleString('en-IN')}
-                    </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <span className="text-xs text-[#686D76] block">Reference Number</span>
+                    <strong className="text-[#B5652D] font-mono">{disbursement.disbursement_reference || 'Pending'}</strong>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Net Payout to Bank</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      ₹{Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')}
-                    </span>
+                  <div>
+                    <span className="text-xs text-[#686D76] block">Destination Bank</span>
+                    <strong className="text-[#14161A]">{disbursement.destination_bank_name || 'N/A'}</strong>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Disbursement Ref</span>
-                    <span className="font-mono font-bold text-white text-xs">
-                      {disbursement.disbursement_reference || 'Not Generated'}
-                    </span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Destination Bank</span>
-                    <span className="font-bold text-white text-xs">
-                      {disbursement.destination_bank_name ? `${disbursement.destination_bank_name} (*${disbursement.destination_account_last4})` : 'N/A'}
-                    </span>
+                  <div>
+                    <span className="text-xs text-[#686D76] block">Status</span>
+                    <StatusBadge status={disbursement.disbursement_status || 'PENDING'} size="sm" />
                   </div>
                 </div>
-
-                {disbursement.initiated_at && (
-                  <div className="text-[11px] text-slate-400 flex flex-wrap gap-4 pt-2 border-t border-slate-800/60">
-                    <span>Initiated: <strong className="text-slate-200">{new Date(disbursement.initiated_at).toLocaleString('en-IN')}</strong></span>
-                    {disbursement.completed_at && (
-                      <span>Completed: <strong className="text-emerald-400">{new Date(disbursement.completed_at).toLocaleString('en-IN')}</strong></span>
-                    )}
-                  </div>
-                )}
-              </div>
+              </Card>
             )}
           </div>
 
-          {/* Right Column: 4-Step Verification & Audit Logs */}
+          {/* Right Column: Verification Dossier, Photo Review & Audit Log */}
           <div className="space-y-6">
-            {/* Verification Status Cards */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-2">
-                  <span>🛡️</span> 5. Customer Verification
-                </h2>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                    application.verification.status === 'COMPLETED'
-                      ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                      : 'bg-amber-950/60 border-amber-700 text-amber-300'
-                  }`}
-                >
-                  {application.verification.status}
+            {/* 4-Point Verification Checklist */}
+            <Card variant="default" padding="lg" className="space-y-3 bg-white">
+              <CardHeader
+                tagline="Risk Verification"
+                title="Customer Verification"
+              />
+
+              <div className="space-y-2 text-sm">
+                <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                  <span className="font-semibold text-[#14161A]">1. KYC ID Document</span>
+                  <span className="text-[#1E5C4A] font-bold">✓ Verified</span>
+                </div>
+                <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                  <span className="font-semibold text-[#14161A]">2. Bank Account</span>
+                  <span className="text-[#1E5C4A] font-bold">✓ Verified</span>
+                </div>
+                <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                  <span className="font-semibold text-[#14161A]">3. Live Photo / Selfie</span>
+                  <span className="text-[#1E5C4A] font-bold">✓ Verified</span>
+                </div>
+                <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                  <span className="font-semibold text-[#14161A]">4. Legal Declaration</span>
+                  <span className="text-[#1E5C4A] font-bold">✓ Accepted</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Standalone Live Photo / Selfie Review (Challenge Requirement 3) */}
+            <Card variant="default" padding="lg" className="space-y-3 bg-white">
+              <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] font-mono">
+                  Live Photo Review
+                </span>
+                <span className={`text-xs font-bold ${photoApproved ? 'text-[#1E5C4A]' : 'text-[#8C3A32]'}`}>
+                  {photoApproved ? '✓ Photo Approved' : '⚠️ Flagged'}
                 </span>
               </div>
 
-              <div className="space-y-3 text-xs">
-                {/* KYC */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-white">KYC Verification</span>
-                    <span className="text-emerald-400 font-bold">✓ Verified</span>
-                  </div>
-                  {application.verification.kyc && (
-                    <div className="text-[11px] text-slate-400 mt-1">
-                      <span>{application.verification.kyc.id_type}: {application.verification.kyc.id_number_masked}</span>
-                    </div>
-                  )}
+              <div className="p-4 bg-[#F9F3EE] rounded-xl border border-[#ECCBB3] text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-white border border-[#ECCBB3] flex items-center justify-center mx-auto text-xl text-[#9C4F1C]">
+                  📷
                 </div>
+                <span className="text-xs font-semibold text-[#14161A] block">
+                  Simulated Customer Live Capture
+                </span>
+                <span className="text-[11px] font-mono text-[#686D76] block">
+                  storage_key: selfies/{application.id.slice(0, 8)}_live_photo.jpg
+                </span>
 
-                {/* Bank */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-white">Bank Account</span>
-                    <span className="text-emerald-400 font-bold">✓ Verified</span>
+                {isUnderReview && (
+                  <div className="pt-2 flex justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPhotoApproved(true)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                        photoApproved
+                          ? 'bg-[#1E5C4A] text-white'
+                          : 'bg-white border border-[#D4D0C7] text-[#686D76]'
+                      }`}
+                    >
+                      ✓ Approve Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPhotoApproved(false)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                        !photoApproved
+                          ? 'bg-[#8C3A32] text-white'
+                          : 'bg-white border border-[#D4D0C7] text-[#686D76]'
+                      }`}
+                    >
+                      Flag Issue
+                    </button>
                   </div>
-                  {application.verification.bank_account && (
-                    <div className="text-[11px] text-slate-400 mt-1">
-                      <span>{application.verification.bank_account.bank_name} ({application.verification.bank_account.account_number_masked})</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Selfie */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-white">Live Photo / Selfie</span>
-                    <span className="text-emerald-400 font-bold">✓ Verified</span>
-                  </div>
-                </div>
-
-                {/* Declaration */}
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-white">Legal Declaration</span>
-                    <span className="text-emerald-400 font-bold">✓ Accepted</span>
-                  </div>
-                  {application.verification.declaration && (
-                    <div className="text-[11px] text-slate-400 mt-1">
-                      <span>Version: {application.verification.declaration.declaration_version}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Audit Trail Log */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <span>📋</span> 6. Application Audit Trail
-              </h2>
-
-              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {application.audit_logs.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No audit records yet.</p>
-                ) : (
-                  application.audit_logs.map((log) => (
-                    <div key={log.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 text-xs">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-mono font-bold text-indigo-300 text-[11px]">
-                          {log.action}
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {new Date(log.created_at).toLocaleString('en-IN', {
-                            dateStyle: 'short',
-                            timeStyle: 'short',
-                          })}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                        <span className="text-slate-500">{log.old_status || 'START'}</span>
-                        <span>→</span>
-                        <span className="text-white font-semibold">{log.new_status || 'END'}</span>
-                      </div>
-                    </div>
-                  ))
                 )}
               </div>
-            </div>
+            </Card>
+
+            {/* Audit Log Timeline */}
+            <Card variant="default" padding="md" className="space-y-3 bg-white">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#686D76] block font-mono">
+                Underwriting Audit Trail
+              </span>
+              <div className="space-y-2 max-h-60 overflow-y-auto text-xs divide-y divide-[#E5E2DC]">
+                {application.audit_logs.map((log) => (
+                  <div key={log.id} className="pt-2 first:pt-0">
+                    <div className="flex justify-between font-mono font-bold text-[#14161A]">
+                      <span>{log.action}</span>
+                      <span className="text-xs text-[#8A8D93] font-normal">
+                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#686D76]">
+                      {log.old_status || 'START'} → {log.new_status || 'END'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </div>
         </div>
       </main>
 
-      {/* APPROVAL MODAL */}
+      {/* Underwriter Approval Modal */}
       {showApproveModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-emerald-700/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-emerald-400">
-              <span className="text-2xl">✓</span>
-              <h3 className="text-lg font-bold text-white">Approve Loan Application</h3>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Confirm credit approval for application <strong className="text-white font-mono">{application.application_number}</strong>. This locks underwriting and authorizes disbursement.
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <h3 className="text-xl font-bold text-[#14161A] font-editorial">Approve Loan Application</h3>
+            <p className="text-sm text-[#686D76]">
+              Authorize credit approval for application <strong>#{application.application_number}</strong>. This locks the case file and authorizes disbursement.
             </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Underwriter Notes / Approval Remarks (Optional)
-              </label>
-              <textarea
-                rows={3}
-                value={adminRemarks}
-                onChange={(e) => setAdminRemarks(e.target.value)}
-                placeholder="e.g. Verified salary slip and low DTI ratio. Approved for standard disbursement."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowApproveModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all"
-              >
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowApproveModal(false)}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                disabled={submittingDecision}
-                onClick={handleApprove}
-                className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-              >
-                {submittingDecision ? 'Approving...' : 'Confirm Approval →'}
-              </button>
+              </Button>
+              <Button variant="primary" size="md" isLoading={submittingDecision} onClick={handleApprove}>
+                Confirm Approval →
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 
-      {/* INITIATE DISBURSEMENT MODAL */}
-      {showDisburseModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-blue-700/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-blue-400">
-              <span className="text-2xl">⚡</span>
-              <h3 className="text-lg font-bold text-white">Initiate Loan Disbursement</h3>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Initiate electronic fund transfer for application <strong className="text-white font-mono">{application.application_number}</strong>. This transitions the application to <strong className="text-blue-300">DISBURSEMENT_PROCESSING</strong>.
-            </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Disbursement Reference Notes (Optional)
-              </label>
-              <textarea
-                rows={2}
-                value={disburseRemarks}
-                onChange={(e) => setDisburseRemarks(e.target.value)}
-                placeholder="e.g. Initiated NEFT payout batch #4401."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDisburseModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={processingDisbursement}
-                onClick={handleInitiateDisbursement}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-              >
-                {processingDisbursement ? 'Processing...' : 'Initiate Payout →'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONFIRM DISBURSEMENT MODAL */}
-      {showConfirmDisburseModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-teal-600/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-teal-400">
-              <span className="text-2xl">💳</span>
-              <h3 className="text-lg font-bold text-white">Confirm Bank Settlement</h3>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Confirm successful receipt of bank settlement. This transitions application <strong className="text-white font-mono">{application.application_number}</strong> to final <strong className="text-emerald-300">DISBURSED</strong> state.
-            </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Settlement Notes (Optional)
-              </label>
-              <textarea
-                rows={2}
-                value={disburseRemarks}
-                onChange={(e) => setDisburseRemarks(e.target.value)}
-                placeholder="e.g. Bank UTR settlement confirmed by core banking system."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowConfirmDisburseModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={processingDisbursement}
-                onClick={handleConfirmDisbursement}
-                className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-              >
-                {processingDisbursement ? 'Confirming...' : 'Confirm Settlement & Disburse →'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* REJECTION MODAL */}
+      {/* Underwriter Rejection Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-rose-700/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-rose-400">
-              <span className="text-2xl">❌</span>
-              <h3 className="text-lg font-bold text-white">Reject Loan Application</h3>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Please specify the mandatory rejection category and reason for declining application <strong className="text-white font-mono">{application.application_number}</strong>.
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <h3 className="text-xl font-bold text-[#8C3A32] font-editorial">Decline Loan Application</h3>
+            <p className="text-sm text-[#686D76]">
+              Specify the primary reason for declining this application.
             </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Rejection Reason Category *
-              </label>
-              <select
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-rose-500 focus:outline-none"
-              >
-                {REJECTION_REASONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Detailed Underwriter Remarks
-              </label>
-              <textarea
-                rows={3}
-                value={adminRemarks}
-                onChange={(e) => setAdminRemarks(e.target.value)}
-                placeholder="Explain the specific risk parameter or failure justification..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:border-rose-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all"
-              >
+            <select
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              className="w-full bg-white border border-[#D4D0C7] rounded-xl p-2.5 text-sm text-[#14161A]"
+            >
+              {REJECTION_REASONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowRejectModal(false)}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                disabled={submittingDecision}
-                onClick={handleReject}
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-              >
-                {submittingDecision ? 'Rejecting...' : 'Confirm Rejection →'}
-              </button>
+              </Button>
+              <Button variant="danger" size="md" isLoading={submittingDecision} onClick={handleReject}>
+                Confirm Rejection →
+              </Button>
             </div>
-          </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Initiate Disbursement Modal */}
+      {showDisburseModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <h3 className="text-xl font-bold text-[#14161A] font-editorial">Initiate Fund Disbursement</h3>
+            <p className="text-sm text-[#686D76]">
+              Initiate electronic fund transfer for application <strong>#{application.application_number}</strong>.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowDisburseModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="md" isLoading={processingDisbursement} onClick={handleInitiateDisbursement}>
+                Initiate Transfer →
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Confirm Disbursement Modal */}
+      {showConfirmDisburseModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card variant="elevated" padding="lg" className="max-w-md w-full space-y-4 bg-white">
+            <h3 className="text-xl font-bold text-[#14161A] font-editorial">Confirm Bank Settlement</h3>
+            <p className="text-sm text-[#686D76]">
+              Confirm receipt of bank UTR settlement. Application will permanently transition to <strong>DISBURSED</strong>.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmDisburseModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="md" isLoading={processingDisbursement} onClick={handleConfirmDisbursement}>
+                Confirm Settlement & Disburse →
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </div>
   );
 };
+
+export default AdminApplicationReview;

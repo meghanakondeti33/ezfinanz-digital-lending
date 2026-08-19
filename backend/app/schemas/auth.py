@@ -3,6 +3,7 @@ Authentication request and response schemas.
 """
 
 import re
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.security import validate_password_strength
@@ -55,6 +56,16 @@ class LoginRequest(BaseModel):
     @classmethod
     def normalize_email(cls, v: EmailStr) -> str:
         return str(v).strip().lower()
+
+    model_config = {
+        "extra": "forbid",
+    }
+
+
+class GoogleAuthRequest(BaseModel):
+    """Payload containing Google ID token or OAuth access token from Google Identity Services."""
+    credential: Optional[str] = Field(None, description="Google ID token")
+    access_token: Optional[str] = Field(None, description="Google OAuth access token")
 
     model_config = {
         "extra": "forbid",

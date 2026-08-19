@@ -1,23 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import apiClient from '../lib/api-client';
 import { fetchApplications } from '../lib/loans-api';
+import { fetchCustomerDisbursement } from '../lib/disbursement-api';
 import type { LoanApplication } from '../types/loan';
+import type { DisbursementDetail } from '../types/disbursement';
 import { extractErrorMessage } from '../lib/error-utils';
+import { Navbar } from '../components/navigation/Navbar';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { LedgerLine } from '../components/journey/LedgerLine';
 
 export const Dashboard: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const [applications, setApplications] = useState<LoanApplication[]>([]);
+  const [primaryDisbursement, setPrimaryDisbursement] = useState<DisbursementDetail | null>(null);
   const [appsLoading, setAppsLoading] = useState<boolean>(true);
   const [appsError, setAppsError] = useState<string | null>(null);
-
-  const [customerResult, setCustomerResult] = useState<string | null>(null);
-  const [customerLoading, setCustomerLoading] = useState(false);
-
-  const [adminResult, setAdminResult] = useState<string | null>(null);
-  const [adminLoading, setAdminLoading] = useState(false);
 
   useEffect(() => {
     if (user?.role === 'CUSTOMER') {
@@ -33,332 +34,336 @@ export const Dashboard: React.FC = () => {
     try {
       const data = await fetchApplications();
       setApplications(data.items);
+
+      if (data.items.length > 0) {
+        const topApp = data.items[0];
+        if (
+          topApp.status === 'APPROVED' ||
+          topApp.status === 'DISBURSEMENT_PROCESSING' ||
+          topApp.status === 'DISBURSED'
+        ) {
+          try {
+            const disb = await fetchCustomerDisbursement(topApp.id);
+            setPrimaryDisbursement(disb);
+          } catch {
+            // Non-critical
+          }
+        }
+      }
     } catch (err: any) {
-      setAppsError(extractErrorMessage(err, 'Failed to load loan applications.'));
+      setAppsError(extractErrorMessage(err, 'Failed to load your loan applications. Please refresh.'));
     } finally {
       setAppsLoading(false);
     }
   };
 
-  const handleTestCustomerEndpoint = async () => {
-    setCustomerLoading(true);
-    setCustomerResult(null);
-    try {
-      const res = await apiClient.get('/customer/test');
-      setCustomerResult(JSON.stringify(res.data, null, 2));
-    } catch (err: any) {
-      setCustomerResult(`Error: ${err.message}`);
-    } finally {
-      setCustomerLoading(false);
+  const isCustomer = user?.role === 'CUSTOMER';
+  const isAdmin = user?.role === 'ADMIN';
+
+  const primaryApp = applications.length > 0 ? applications[0] : null;
+
+  const getNextActionText = (status: string) => {
+    switch (status) {
+      case 'DRAFT':
+        return 'Continue application →';
+      case 'SUBMITTED':
+        return 'Check loan eligibility →';
+      case 'ELIGIBILITY_CHECKED':
+        return 'Choose your offer →';
+      case 'OFFER_SELECTED':
+        return 'Complete verification →';
+      case 'UNDER_REVIEW':
+        return 'View loan details →';
+      case 'APPROVED':
+      case 'DISBURSEMENT_PROCESSING':
+      case 'DISBURSED':
+      default:
+        return 'View loan details →';
     }
   };
 
-  const handleTestAdminEndpoint = async () => {
-    setAdminLoading(true);
-    setAdminResult(null);
-    try {
-      const res = await apiClient.get('/admin/test');
-      setAdminResult(JSON.stringify(res.data, null, 2));
-    } catch (err: any) {
-      setAdminResult(`Error: ${err.message}`);
-    } finally {
-      setAdminLoading(false);
+  const getStatusHeadline = (status: string) => {
+    switch (status) {
+      case 'DRAFT':
+        return 'Your application is ready to finish';
+      case 'SUBMITTED':
+        return 'Application submitted — ready for eligibility';
+      case 'ELIGIBILITY_CHECKED':
+        return "You're eligible — choose your repayment plan";
+      case 'OFFER_SELECTED':
+        return 'Plan selected — complete identity verification';
+      case 'UNDER_REVIEW':
+        return 'Your application is with our review team';
+      case 'APPROVED':
+        return 'Your loan has been approved';
+      case 'DISBURSEMENT_PROCESSING':
+        return 'Money is being transferred to your account';
+      case 'DISBURSED':
+        return 'Loan funds disbursed & settled';
+      case 'REJECTED':
+        return 'Application declined';
+      default:
+        return 'Personal Loan';
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
-      {/* Navigation Header */}
-      <nav className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Link to="/" className="text-2xl font-black tracking-tight text-white">
-              EZ<span className="text-emerald-400">FINANZ</span>
-            </Link>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
-              Phase 3 Workflow
+    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col font-sans selection:bg-[#B5652D]/20">
+      <Navbar />
+
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 space-y-8">
+        {/* Welcome Header */}
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E5E2DC] pb-6">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] font-mono">
+              Borrower Workspace
             </span>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#14161A] font-editorial tracking-tight mt-1">
+              Your Loan Journey
+            </h1>
+            <p className="text-sm sm:text-base text-[#686D76] mt-1">
+              Welcome back, <span className="font-semibold text-[#14161A]">{user?.email}</span>
+            </p>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-slate-400 hidden sm:inline-block">
-              {user?.email}
-            </span>
-            <button
-              onClick={logout}
-              className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-xl transition-all border border-slate-700"
-            >
-              Sign Out
-            </button>
-          </div>
+          {isCustomer && primaryApp && (
+            <div>
+              <Link to="/loans/new">
+                <Button variant="outline" size="md">
+                  + Apply for a new loan
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
-      </nav>
 
-      {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-4 py-10">
-        <div className="space-y-8">
-          {/* User Profile Card */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+        {/* Credit Officer Quick Link if logged in as Admin */}
+        {isAdmin && (
+          <Card variant="accent" padding="md" className="bg-[#F9F3EE] border-[#ECCBB3]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-white">Customer Dashboard</h1>
-                <p className="text-slate-400 text-sm mt-1">
-                  Authenticated as <span className="text-emerald-400 font-semibold">{user?.email}</span>
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#9C4F1C]">
+                  Underwriter Portal
+                </span>
+                <h2 className="text-lg font-bold text-[#14161A] font-editorial">
+                  Case Review & Underwriting Queue
+                </h2>
+                <p className="text-sm text-[#686D76] mt-0.5">
+                  You are signed in with the Credit Officer role. Access the administrative case queue to review applications.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-medium">Role:</span>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    user?.role === 'ADMIN'
-                      ? 'bg-purple-950 text-purple-300 border border-purple-800'
-                      : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                  }`}
-                >
-                  {user?.role}
-                </span>
-              </div>
+              <Link to="/admin" className="shrink-0">
+                <Button variant="secondary" size="md">
+                  Open Underwriting Queue →
+                </Button>
+              </Link>
             </div>
+          </Card>
+        )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-6">
-              <div>
-                <span className="block text-xs font-medium text-slate-500 uppercase tracking-wider">User ID</span>
-                <span className="block text-sm font-mono text-slate-300 mt-1 break-all">{user?.id}</span>
-              </div>
+        {/* CUSTOMER LOAN ZONE */}
+        {isCustomer && (
+          <div className="space-y-6">
+            {appsLoading ? (
+              <Card padding="lg" className="text-center py-16">
+                <div className="animate-spin h-7 w-7 border-2 border-[#B5652D] border-t-transparent rounded-full mx-auto mb-3" />
+                <p className="text-sm text-[#686D76]">Retrieving your active loan application…</p>
+              </Card>
+            ) : appsError ? (
+              <Card padding="md" className="border-[#8C3A32] bg-[#FBEFEC]">
+                <p className="text-sm text-[#8C3A32] font-medium">⚠️ {appsError}</p>
+              </Card>
+            ) : applications.length === 0 ? (
+              /* EMPTY STATE (Per Blueprint Section 9) */
+              <div className="space-y-8">
+                <Card variant="elevated" padding="lg" className="text-center py-12 sm:py-16 space-y-6 bg-white">
+                  <div className="w-16 h-16 rounded-full bg-[#F9F3EE] border border-[#ECCBB3] flex items-center justify-center mx-auto text-2xl text-[#B5652D]">
+                    ✦
+                  </div>
 
-              <div>
-                <span className="block text-xs font-medium text-slate-500 uppercase tracking-wider">Email</span>
-                <span className="block text-sm text-slate-200 mt-1">{user?.email}</span>
-              </div>
+                  <div className="max-w-xl mx-auto space-y-2">
+                    <h2 className="text-3xl sm:text-4xl font-bold text-[#14161A] font-editorial tracking-tight">
+                      Your loan journey starts here.
+                    </h2>
+                    <p className="text-sm sm:text-base text-[#686D76] leading-relaxed">
+                      Apply online in a few simple steps and receive transparent terms with direct bank transfer upon approval.
+                    </p>
+                  </div>
 
-              <div>
-                <span className="block text-xs font-medium text-slate-500 uppercase tracking-wider">Mobile Number</span>
-                <span className="block text-sm text-slate-200 mt-1">{user?.phone}</span>
-              </div>
+                  <div className="pt-2">
+                    <Link to="/loans/new">
+                      <Button variant="primary" size="lg" className="px-8 py-3 text-base">
+                        Apply for a personal loan →
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
 
-              <div>
-                <span className="block text-xs font-medium text-slate-500 uppercase tracking-wider">Account Status</span>
-                <span className="inline-flex items-center gap-1.5 text-sm text-emerald-400 font-medium mt-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-                  {user?.is_active ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-            </div>
+                {/* How It Works Explainer */}
+                <div className="bg-white border border-[#E5E2DC] rounded-2xl p-6 sm:p-8 space-y-6">
+                  <div className="border-b border-[#E5E2DC] pb-4">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] font-mono">
+                      Simple Process
+                    </span>
+                    <h3 className="text-xl sm:text-2xl font-bold text-[#14161A] font-editorial mt-1">
+                      How it works
+                    </h3>
+                  </div>
 
-            {/* Admin Portal Navigation Banner */}
-            {user?.role === 'ADMIN' && (
-              <div className="mt-6 pt-6 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-indigo-950/30 p-4 rounded-xl border border-indigo-900/60">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block">Credit Officer Access</span>
-                  <span className="text-sm font-semibold text-white">Underwriting & Application Review Queue</span>
-                  <p className="text-xs text-slate-400 mt-0.5">Review customer verification documents, credit scoring, and submit approval/rejection decisions.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                    <div className="p-4 rounded-xl bg-[#F7F5F1] space-y-1.5">
+                      <span className="text-xs font-mono font-bold text-[#B5652D]">1</span>
+                      <h4 className="text-sm font-bold text-[#14161A]">Apply</h4>
+                      <p className="text-xs text-[#686D76]">Tell us how much you need and your basic details.</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-[#F7F5F1] space-y-1.5">
+                      <span className="text-xs font-mono font-bold text-[#B5652D]">2</span>
+                      <h4 className="text-sm font-bold text-[#14161A]">Check eligibility</h4>
+                      <p className="text-xs text-[#686D76]">Get instant borrowing limit evaluation with clear reasons.</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-[#F7F5F1] space-y-1.5">
+                      <span className="text-xs font-mono font-bold text-[#B5652D]">3</span>
+                      <h4 className="text-sm font-bold text-[#14161A]">Compare offers</h4>
+                      <p className="text-xs text-[#686D76]">Choose your preferred EMI and repayment schedule.</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-[#F7F5F1] space-y-1.5">
+                      <span className="text-xs font-mono font-bold text-[#B5652D]">4</span>
+                      <h4 className="text-sm font-bold text-[#14161A]">Verify your details</h4>
+                      <p className="text-xs text-[#686D76]">Quick and secure identity and destination bank check.</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-[#F7F5F1] space-y-1.5">
+                      <span className="text-xs font-mono font-bold text-[#B5652D]">5</span>
+                      <h4 className="text-sm font-bold text-[#14161A]">Receive your funds</h4>
+                      <p className="text-xs text-[#686D76]">Electronic transfer directly into your verified bank account.</p>
+                    </div>
+                  </div>
                 </div>
-                <Link
-                  to="/admin"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all text-center whitespace-nowrap"
-                >
-                  Open Underwriting Portal →
-                </Link>
+              </div>
+            ) : (
+              /* ACTIVE OR COMPLETED LOAN SUMMARY */
+              <div className="space-y-6">
+                {primaryApp && (
+                  <Card variant="elevated" padding="lg" className="space-y-6 border-t-4 border-t-[#B5652D] bg-white">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-[#E5E2DC] pb-5">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-1.5">
+                          <span className="text-xs font-mono font-bold text-[#686D76]">
+                            #{primaryApp.application_number}
+                          </span>
+                          <StatusBadge status={primaryApp.status} size="md" />
+                        </div>
+
+                        <span className="text-xs font-semibold text-[#686D76] uppercase tracking-wider block mt-1">
+                          {getStatusHeadline(primaryApp.status)}
+                        </span>
+
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#14161A] font-mono mt-1">
+                          ₹{Number(primaryApp.requested_amount || 0).toLocaleString('en-IN')}
+                        </h2>
+
+                        <p className="text-xs text-[#8A8D93] mt-1">
+                          Updated on {new Date(primaryApp.updated_at).toLocaleDateString('en-IN', { dateStyle: 'long' })}
+                        </p>
+                      </div>
+
+                      <div className="self-start sm:self-auto">
+                        <Link to={`/loans/${primaryApp.id}`}>
+                          <Button variant="primary" size="lg" className="w-full sm:w-auto">
+                            {getNextActionText(primaryApp.status)}
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Compact Financial Attributes Grid (Per Requirement 3) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                        <span className="text-[11px] text-[#686D76] font-semibold uppercase block">Loan Purpose</span>
+                        <strong className="text-sm font-bold text-[#14161A] block mt-1">
+                          {primaryApp.purpose || 'Personal needs'}
+                        </strong>
+                      </div>
+
+                      <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                        <span className="text-[11px] text-[#686D76] font-semibold uppercase block">Selected Plan</span>
+                        <strong className="text-sm font-bold text-[#14161A] block mt-1">
+                          {primaryDisbursement?.tenure_months
+                            ? `${primaryDisbursement.tenure_months} Months`
+                            : primaryApp.requested_tenure_months
+                            ? `${primaryApp.requested_tenure_months} Months`
+                            : 'Pending selection'}
+                        </strong>
+                      </div>
+
+                      <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                        <span className="text-[11px] text-[#686D76] font-semibold uppercase block">Monthly EMI</span>
+                        <strong className="text-sm font-bold text-[#14161A] font-mono block mt-1">
+                          {primaryDisbursement?.emi
+                            ? `₹${Number(primaryDisbursement.emi).toLocaleString('en-IN')}`
+                            : 'Pending'}
+                        </strong>
+                      </div>
+
+                      <div className="p-3.5 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                        <span className="text-[11px] text-[#686D76] font-semibold uppercase block">Interest Rate</span>
+                        <strong className="text-sm font-bold text-[#14161A] font-mono block mt-1">
+                          {primaryDisbursement?.interest_rate
+                            ? `${Number(primaryDisbursement.interest_rate).toFixed(2)}% p.a.`
+                            : '12.00% p.a.'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Integrated Ledger Line */}
+                    <div className="space-y-2 pt-2">
+                      <span className="text-xs font-semibold text-[#686D76] uppercase tracking-wider block">
+                        What&apos;s happening now
+                      </span>
+                      <LedgerLine status={primaryApp.status} compact />
+                    </div>
+                  </Card>
+                )}
+
+                {/* Additional Applications if user has more than 1 */}
+                {applications.length > 1 && (
+                  <div className="space-y-3 pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#686D76] font-mono">
+                      Other Applications ({applications.length - 1})
+                    </h3>
+                    <div className="space-y-3">
+                      {applications.slice(1).map((app) => (
+                        <Card key={app.id} variant="default" padding="sm" className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <span className="font-mono text-xs font-bold text-[#14161A] block">
+                                #{app.application_number}
+                              </span>
+                              <span className="text-xs text-[#686D76]">
+                                ₹{Number(app.requested_amount || 0).toLocaleString('en-IN')} • {app.purpose || 'Personal'}
+                              </span>
+                            </div>
+                            <StatusBadge status={app.status} size="sm" />
+                          </div>
+
+                          <Link to={`/loans/${app.id}`}>
+                            <Button variant="outline" size="sm">
+                              View loan details →
+                            </Button>
+                          </Link>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
-
-          {/* Section: My Applications (Customer Role) */}
-          {user?.role === 'CUSTOMER' && (
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
-                <div>
-                  <h2 className="text-xl font-bold text-white">My Loan Applications</h2>
-                  <p className="text-slate-400 text-sm mt-1">
-                    Manage and track your active personal loan applications
-                  </p>
-                </div>
-                <Link
-                  to="/loans/new"
-                  className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-950/40 transition-all"
-                >
-                  + Apply for Personal Loan
-                </Link>
-              </div>
-
-              {appsLoading ? (
-                <div className="py-12 text-center text-slate-400">
-                  <svg className="animate-spin h-6 w-6 text-emerald-400 mx-auto mb-2" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Loading your applications…</span>
-                </div>
-              ) : appsError ? (
-                <div className="my-6 p-4 rounded-xl bg-red-900/30 border border-red-800 text-red-300 text-sm">
-                  {appsError}
-                </div>
-              ) : applications.length === 0 ? (
-                <div className="py-12 text-center">
-                  <div className="h-16 w-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl text-slate-400">
-                    📄
-                  </div>
-                  <h3 className="text-lg font-semibold text-white mb-1">No Loan Applications Found</h3>
-                  <p className="text-sm text-slate-400 max-w-md mx-auto mb-6">
-                    You have not started any loan applications yet. Click below to begin your personal loan application.
-                  </p>
-                  <Link
-                    to="/loans/new"
-                    className="inline-flex items-center px-5 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-bold text-sm transition-all"
-                  >
-                    Start New Loan Application
-                  </Link>
-                </div>
-              ) : (
-                <div className="mt-6 space-y-4">
-                  {applications.map((app) => {
-                    const isDraft = app.status === 'DRAFT';
-                    const isDisbursed = app.status === 'DISBURSED';
-                    const isProcessing = app.status === 'DISBURSEMENT_PROCESSING';
-                    const isApproved = app.status === 'APPROVED';
-                    const isRejected = app.status === 'REJECTED';
-                    const isUnderReview = app.status === 'UNDER_REVIEW';
-
-                    const badgeClass = isDisbursed
-                      ? 'bg-teal-950/60 border-teal-600 text-teal-300 font-bold'
-                      : isProcessing
-                      ? 'bg-blue-950/60 border-blue-600 text-blue-300 animate-pulse'
-                      : isApproved
-                      ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                      : isRejected
-                      ? 'bg-rose-950/60 border-rose-700 text-rose-300'
-                      : isUnderReview
-                      ? 'bg-amber-950/60 border-amber-700 text-amber-300 animate-pulse'
-                      : isDraft
-                      ? 'bg-yellow-950/60 border-yellow-800 text-yellow-300'
-                      : 'bg-blue-950/60 border-blue-800 text-blue-300';
-
-                    return (
-                      <div
-                        key={app.id}
-                        className="bg-slate-950/70 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-3">
-                            <span className="font-mono font-bold text-white text-base">
-                              {app.application_number}
-                            </span>
-                            <span
-                              className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${badgeClass}`}
-                            >
-                              {app.status}
-                            </span>
-                          </div>
-
-                          <div className="text-sm text-slate-300 flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
-                            <span>
-                              <strong className="text-white">
-                                {app.requested_amount
-                                  ? `₹${Number(app.requested_amount).toLocaleString('en-IN')}`
-                                  : 'Amount Pending'}
-                              </strong>
-                            </span>
-                            {app.purpose && (
-                              <span className="text-slate-400">• {app.purpose}</span>
-                            )}
-                            {app.requested_tenure_months && (
-                              <span className="text-slate-400">• {app.requested_tenure_months} Months</span>
-                            )}
-                          </div>
-
-                          <div className="text-xs text-slate-500 pt-1">
-                            Updated {new Date(app.updated_at).toLocaleDateString()}
-                          </div>
-                        </div>
-
-                        <div>
-                          <Link
-                            to={`/loans/${app.id}`}
-                            className={`inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                              isDraft
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                                : 'bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700'
-                            }`}
-                          >
-                            {isDraft ? 'Continue Draft →' : 'View Application →'}
-                          </Link>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Role-Based Access Control Verification Card */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm">
-            <h2 className="text-xl font-bold text-white mb-2">Role-Based Authorization Verification</h2>
-            <p className="text-slate-400 text-sm mb-6">
-              Test backend role enforcement in real-time. The backend validates permissions for every request.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Customer Route Test */}
-              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-emerald-400">Customer Test Endpoint</span>
-                    <span className="text-xs font-mono text-slate-500">GET /customer/test</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mb-4">
-                    Requires <code className="text-emerald-400 font-mono">CUSTOMER</code> role.
-                  </p>
-                </div>
-
-                <div>
-                  <button
-                    onClick={handleTestCustomerEndpoint}
-                    disabled={customerLoading}
-                    className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
-                  >
-                    {customerLoading ? 'Calling endpoint…' : 'Execute Customer Test'}
-                  </button>
-
-                  {customerResult && (
-                    <pre className="mt-3 p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto">
-                      {customerResult}
-                    </pre>
-                  )}
-                </div>
-              </div>
-
-              {/* Admin Route Test */}
-              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-purple-400">Admin Test Endpoint</span>
-                    <span className="text-xs font-mono text-slate-500">GET /admin/test</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mb-4">
-                    Requires <code className="text-purple-400 font-mono">ADMIN</code> role.
-                  </p>
-                </div>
-
-                <div>
-                  <button
-                    onClick={handleTestAdminEndpoint}
-                    disabled={adminLoading}
-                    className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all disabled:opacity-50"
-                  >
-                    {adminLoading ? 'Calling endpoint…' : 'Execute Admin Test'}
-                  </button>
-
-                  {adminResult && (
-                    <pre className="mt-3 p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto">
-                      {adminResult}
-                    </pre>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </main>
     </div>
   );

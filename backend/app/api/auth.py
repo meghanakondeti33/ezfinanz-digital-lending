@@ -1,8 +1,8 @@
 """
 Authentication API endpoints.
 
-Provides public routes for customer registration and login,
-and an authenticated route to retrieve the current user's profile.
+Provides public routes for customer registration, email/password login,
+Google Identity Services OAuth, and an authenticated route to retrieve the current user's profile.
 """
 
 from fastapi import APIRouter, Depends, status
@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import GoogleAuthRequest, LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserResponse
-from app.services.auth_service import authenticate_user, register_user
+from app.services.auth_service import authenticate_google_user, authenticate_user, register_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,6 +51,23 @@ def login(
     Verifies user credentials and returns a short-lived JWT token.
     """
     return authenticate_user(db, request)
+
+
+@router.post(
+    "/google",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate via Google Identity Services",
+)
+def google_auth(
+    request: GoogleAuthRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """
+    Google Identity Services login & customer auto-provisioning endpoint.
+    Verifies Google ID token, finds or creates CUSTOMER account, and issues JWT access token.
+    """
+    return authenticate_google_user(db, request)
 
 
 @router.get(

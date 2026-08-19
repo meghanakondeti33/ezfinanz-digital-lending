@@ -7,9 +7,14 @@ import type {
   AdminDashboardStats,
 } from '../../types/admin';
 import { extractErrorMessage } from '../../lib/error-utils';
+import { Navbar } from '../../components/navigation/Navbar';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 
 export const AdminDashboard: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [applications, setApplications] = useState<AdminApplicationQueueItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -28,7 +33,7 @@ export const AdminDashboard: React.FC = () => {
       setStats(statsData);
       setApplications(queueData.applications);
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to load admin queue.'));
+      setError(extractErrorMessage(err, 'Failed to load underwriter queue.'));
     } finally {
       setLoading(false);
     }
@@ -43,268 +48,152 @@ export const AdminDashboard: React.FC = () => {
     loadData();
   };
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'UNDER_REVIEW':
-        return 'bg-amber-950/60 border-amber-700 text-amber-300 animate-pulse';
-      case 'APPROVED':
-        return 'bg-emerald-950/60 border-emerald-700 text-emerald-300';
-      case 'REJECTED':
-        return 'bg-rose-950/60 border-rose-700 text-rose-300';
-      case 'OFFER_SELECTED':
-        return 'bg-blue-950/60 border-blue-700 text-blue-300';
-      default:
-        return 'bg-slate-800 border-slate-700 text-slate-400';
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Admin Navbar */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Link to="/admin" className="flex items-center space-x-2">
-              <span className="text-2xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-                EZFINANZ
-              </span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-950 border border-indigo-700 text-indigo-300">
-                Underwriting Portal
-              </span>
-            </Link>
+    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col font-sans selection:bg-[#B5652D]/20">
+      <Navbar />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
+        {/* Header Title */}
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-[#E5E2DC] pb-6">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-[#9C4F1C] font-mono">
+              Credit Underwriting Console
+            </span>
+            <h1 className="text-3xl font-bold text-[#14161A] font-editorial tracking-tight mt-1">
+              Application Queue & Risk Review
+            </h1>
+            <p className="text-xs sm:text-sm text-[#686D76] mt-0.5">
+              Review case files, verify customer documentation, and authorize loan decisions.
+            </p>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="text-right hidden sm:block">
-              <span className="text-xs font-semibold text-slate-200 block">{user?.email}</span>
-              <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Credit Officer (Admin)</span>
-            </div>
-            <button
-              onClick={logout}
-              className="px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all"
-            >
-              Sign Out
-            </button>
+          <div className="text-xs text-[#686D76]">
+            Reviewer: <strong className="text-[#14161A]">{user?.email}</strong>
           </div>
         </div>
-      </header>
 
-      {/* Main Admin Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            Underwriting & Application Queue
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Review customer loan applications, verify credit risk indicators, and make approval decisions.
-          </p>
-        </div>
-
-        {/* KPI Summary Tiles */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-900/90 border border-amber-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Awaiting Review</span>
-              <span className="text-lg">⏳</span>
-            </div>
-            <div className="text-3xl font-black text-white font-mono mt-2">
-              {stats?.under_review_count ?? 0}
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Completed verification pipeline</span>
+        {/* Global Error Banner */}
+        {error && (
+          <div className="p-4 rounded-lg bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-xs">
+            ⚠️ {error}
           </div>
+        )}
 
-          <div className="bg-slate-900/90 border border-emerald-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Approved Loans</span>
-              <span className="text-lg">✅</span>
-            </div>
-            <div className="text-3xl font-black text-white font-mono mt-2">
-              {stats?.approved_count ?? 0}
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Ready for disbursement</span>
-          </div>
-
-          <div className="bg-slate-900/90 border border-rose-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-rose-400">Rejected Loans</span>
-              <span className="text-lg">❌</span>
-            </div>
-            <div className="text-3xl font-black text-white font-mono mt-2">
-              {stats?.rejected_count ?? 0}
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Declined applications</span>
-          </div>
-
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Applications</span>
-              <span className="text-lg">📊</span>
-            </div>
-            <div className="text-3xl font-black text-white font-mono mt-2">
+        {/* High-Level Portfolio Metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card variant="default" padding="sm" className="space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#686D76]">Total Applications</span>
+            <span className="text-2xl font-bold text-[#14161A] font-mono block">
               {stats?.total_applications ?? 0}
-            </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">Across all states</span>
-          </div>
+            </span>
+          </Card>
+
+          <Card variant="default" padding="sm" className="space-y-1 border-l-4 border-l-[#A8752B]">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#A8752B]">Under Review</span>
+            <span className="text-2xl font-bold text-[#14161A] font-mono block">
+              {stats?.under_review_count ?? 0}
+            </span>
+          </Card>
+
+          <Card variant="default" padding="sm" className="space-y-1 border-l-4 border-l-[#1E5C4A]">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#1E5C4A]">Approved Loans</span>
+            <span className="text-2xl font-bold text-[#14161A] font-mono block">
+              {stats?.approved_count ?? 0}
+            </span>
+          </Card>
+
+          <Card variant="default" padding="sm" className="space-y-1 border-l-4 border-l-[#8C3A32]">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C3A32]">Declined Loans</span>
+            <span className="text-2xl font-bold text-[#14161A] font-mono block">
+              {stats?.rejected_count ?? 0}
+            </span>
+          </Card>
         </div>
 
-        {/* Filter Controls & Search */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Search & Filter Toolbar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-[#E5E2DC]">
           {/* Status Filter Tabs */}
-          <div className="flex items-center space-x-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-            {['ALL', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'].map((st) => (
+          <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto">
+            {['ALL', 'UNDER_REVIEW', 'APPROVED', 'DISBURSEMENT_PROCESSING', 'DISBURSED', 'REJECTED'].map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   statusFilter === st
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800'
+                    ? 'bg-[#14161A] text-white shadow-xs'
+                    : 'text-[#686D76] hover:bg-[#F2EFE9] hover:text-[#14161A]'
                 }`}
               >
-                {st === 'ALL'
-                  ? 'All Applications'
-                  : st === 'UNDER_REVIEW'
-                  ? 'Under Review'
-                  : st === 'APPROVED'
-                  ? 'Approved'
-                  : 'Rejected'}
+                {st.replace(/_/g, ' ')}
               </button>
             ))}
           </div>
 
-          {/* Search Input */}
-          <form onSubmit={handleSearchSubmit} className="flex items-center space-x-2 w-full sm:w-72">
-            <input
-              type="text"
+          {/* Search Box */}
+          <form onSubmit={handleSearchSubmit} className="w-full sm:w-72 flex items-center gap-2">
+            <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search app #, email, phone..."
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              placeholder="Search by app #, email, name"
+              className="py-1.5 text-xs"
             />
-            <button
-              type="submit"
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-all"
-            >
+            <Button type="submit" variant="secondary" size="sm">
               Search
-            </button>
+            </Button>
           </form>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="p-4 rounded-xl bg-red-900/40 border border-red-800 text-red-300 text-xs flex items-center space-x-2">
-            <span>⚠️ {error}</span>
-          </div>
-        )}
-
-        {/* Application Queue Table */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Application Records ({applications.length})
-            </span>
-            <button
-              onClick={loadData}
-              className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1"
-            >
-              <span>↻</span> Refresh Queue
-            </button>
-          </div>
-
+        {/* Case File Queue Table */}
+        <Card variant="default" padding="none" className="overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-slate-400 animate-pulse">
-              <div className="h-4 w-48 bg-slate-800 rounded mx-auto mb-2"></div>
-              <p className="text-xs">Loading application records...</p>
+            <div className="p-12 text-center">
+              <div className="animate-spin h-6 w-6 border-2 border-[#B5652D] border-t-transparent rounded-full mx-auto mb-3" />
+              <p className="text-xs text-[#686D76]">Refreshing underwriter queue…</p>
             </div>
           ) : applications.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 space-y-2">
-              <p className="text-sm font-semibold text-slate-300">No applications match current filters.</p>
-              <p className="text-xs text-slate-500">Applications submitted by customers will appear in this queue.</p>
+            <div className="p-12 text-center text-xs text-[#686D76]">
+              No applications matching the selected criteria.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#F7F5F1] text-[#686D76] uppercase text-[10px] font-bold tracking-wider border-b border-[#E5E2DC]">
                   <tr>
-                    <th className="py-3.5 px-4">Application #</th>
-                    <th className="py-3.5 px-4">Customer</th>
-                    <th className="py-3.5 px-4">Loan Amount</th>
-                    <th className="py-3.5 px-4">Eligibility Score</th>
-                    <th className="py-3.5 px-4">Selected Offer</th>
-                    <th className="py-3.5 px-4">Verification</th>
-                    <th className="py-3.5 px-4">Status</th>
-                    <th className="py-3.5 px-4 text-right">Action</th>
+                    <th className="px-5 py-3">Application #</th>
+                    <th className="px-5 py-3">Applicant</th>
+                    <th className="px-5 py-3">Requested Loan</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Submitted Date</th>
+                    <th className="px-5 py-3 text-right">Review Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-[#E5E2DC]">
                   {applications.map((app) => (
-                    <tr key={app.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-white">
+                    <tr key={app.id} className="hover:bg-[#F9F8F6] transition-colors">
+                      <td className="px-5 py-4 font-mono font-bold text-[#14161A]">
                         {app.application_number}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className="font-semibold text-white block">
-                          {app.customer_name || 'Anonymous Applicant'}
-                        </span>
-                        <span className="text-[11px] text-slate-400 block">{app.customer_email}</span>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-[#14161A]">{app.customer_name || 'N/A'}</div>
+                        <div className="text-[11px] text-[#686D76]">{app.customer_email}</div>
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-200">
-                        {app.requested_amount ? `₹${Number(app.requested_amount).toLocaleString('en-IN')}` : 'N/A'}
+                      <td className="px-5 py-4">
+                        <div className="font-mono font-bold text-[#14161A]">
+                          ₹{Number(app.requested_amount || 0).toLocaleString('en-IN')}
+                        </div>
+                        <div className="text-[11px] text-[#686D76]">{app.purpose || 'Personal'}</div>
                       </td>
-                      <td className="py-3.5 px-4">
-                        {app.eligibility_score ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-bold text-emerald-400">
-                              {Number(app.eligibility_score).toFixed(0)}/100
-                            </span>
-                            <span className="text-[10px] text-slate-400">({app.eligibility_status})</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-500">Not Evaluated</span>
-                        )}
+                      <td className="px-5 py-4">
+                        <StatusBadge status={app.status} size="sm" />
                       </td>
-                      <td className="py-3.5 px-4">
-                        {app.selected_offer_emi ? (
-                          <div>
-                            <span className="font-mono font-semibold text-white block">
-                              ₹{Number(app.selected_offer_emi).toLocaleString('en-IN')}/mo
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {app.selected_offer_rate}% p.a.
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-500">No Offer Selected</span>
-                        )}
+                      <td className="px-5 py-4 text-[#686D76]">
+                        {new Date(app.updated_at || app.created_at).toLocaleDateString('en-IN')}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            app.verification_status === 'COMPLETED'
-                              ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                              : app.verification_status === 'IN_PROGRESS'
-                              ? 'bg-blue-950/60 border-blue-700 text-blue-300'
-                              : 'bg-slate-800 border-slate-700 text-slate-400'
-                          }`}
-                        >
-                          {app.verification_status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase border ${getStatusBadgeClass(
-                            app.status
-                          )}`}
-                        >
-                          {app.status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <Link
-                          to={`/admin/applications/${app.id}`}
-                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow transition-all inline-block"
-                        >
-                          Review →
+                      <td className="px-5 py-4 text-right">
+                        <Link to={`/admin/applications/${app.id}`}>
+                          <Button variant="outline" size="sm">
+                            Open Case File →
+                          </Button>
                         </Link>
                       </td>
                     </tr>
@@ -313,8 +202,10 @@ export const AdminDashboard: React.FC = () => {
               </table>
             </div>
           )}
-        </div>
+        </Card>
       </main>
     </div>
   );
 };
+
+export default AdminDashboard;

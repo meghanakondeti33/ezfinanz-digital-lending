@@ -20,6 +20,10 @@ import {
   submitSelfie,
 } from '../../lib/verification-api';
 import { extractErrorMessage } from '../../lib/error-utils';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Select } from '../ui/Select';
+import { Card } from '../ui/Card';
 
 interface VerificationWizardProps {
   applicationId: string;
@@ -114,7 +118,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         if (onVerificationComplete) onVerificationComplete();
       }
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to load verification pipeline state.'));
+      setError(extractErrorMessage(err, 'Failed to load verification status.'));
     } finally {
       setLoading(false);
     }
@@ -134,11 +138,11 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
     try {
       const res = await submitKYC(applicationId, kycForm);
       setKycData(res);
-      setSuccess('KYC documents verified successfully!');
+      setSuccess('Identity details recorded and verified.');
       await loadState();
       setActiveStep(2);
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to submit KYC.'));
+      setError(extractErrorMessage(err, 'Failed to submit identity details.'));
     } finally {
       setSubmitting(false);
     }
@@ -154,7 +158,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
     try {
       const res = await submitBankAccount(applicationId, bankForm);
       setBankData(res);
-      setSuccess('Disbursement bank account verified successfully!');
+      setSuccess('Disbursement bank account verified.');
       await loadState();
       setActiveStep(3);
     } catch (err: any) {
@@ -175,11 +179,11 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         storage_key: `selfies/${applicationId}_live_photo.jpg`,
       });
       setSelfieData(res);
-      setSuccess('Live photo / selfie verification completed!');
+      setSuccess('Live photo verification confirmed.');
       await loadState();
       setActiveStep(4);
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Selfie verification failed.'));
+      setError(extractErrorMessage(err, 'Photo verification failed.'));
     } finally {
       setSubmitting(false);
     }
@@ -189,7 +193,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   const handleDeclarationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!declarationAccepted) {
-      setError('You must check the agreement box to accept terms.');
+      setError('Please acknowledge the terms to complete verification.');
       return;
     }
 
@@ -203,12 +207,12 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         declaration_version: 'v1.0',
       });
       setDeclarationData(res);
-      setSuccess('🎉 Declaration accepted! Complete verification achieved.');
+      setSuccess('Verification completed. Your file is ready for underwriting review.');
       await loadState();
       setActiveStep(5);
       if (onVerificationComplete) onVerificationComplete();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to accept declaration.'));
+      setError(extractErrorMessage(err, 'Failed to confirm declaration.'));
     } finally {
       setSubmitting(false);
     }
@@ -216,571 +220,396 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
 
   if (loading && !summary) {
     return (
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-8 text-center animate-pulse">
-        <div className="h-6 w-48 bg-slate-800 rounded mx-auto mb-4"></div>
-        <div className="h-4 w-64 bg-slate-800/60 rounded mx-auto"></div>
-      </div>
+      <Card padding="lg" className="text-center py-12 bg-white">
+        <div className="animate-spin h-6 w-6 border-2 border-[#B5652D] border-t-transparent rounded-full mx-auto mb-3" />
+        <p className="text-sm text-[#686D76]">Loading verification checkpoint…</p>
+      </Card>
     );
   }
 
   const steps = [
     { num: 1, title: 'Identity (KYC)', done: summary?.kyc === 'VERIFIED' },
     { num: 2, title: 'Bank Account', done: summary?.bank_account === 'VERIFIED' },
-    { num: 3, title: 'Live Selfie', done: summary?.selfie === 'VERIFIED' },
+    { num: 3, title: 'Live Photo', done: summary?.selfie === 'VERIFIED' },
     { num: 4, title: 'Declaration', done: summary?.declaration === 'ACCEPTED' },
-    { num: 5, title: 'Completed', done: summary?.status === 'COMPLETED' },
   ];
 
   return (
-    <div className="bg-slate-900/90 border border-blue-900/50 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+    <Card variant="elevated" padding="lg" className="space-y-6 bg-white">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E5E2DC] pb-5">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-            Verification Pipeline
+          <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] font-mono">
+            Identity & Account Verification
           </span>
-          <h2 className="text-xl font-bold text-white mt-0.5">
-            Customer Identity & Account Verification
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
+            Customer Verification
           </h2>
+          <p className="text-sm text-[#686D76] mt-0.5">
+            Four quick steps to verify your identity and link your destination bank account for direct disbursement.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide border ${
-              summary?.status === 'COMPLETED'
-                ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                : summary?.status === 'IN_PROGRESS'
-                ? 'bg-blue-950/60 border-blue-700 text-blue-300'
-                : 'bg-slate-800 border-slate-700 text-slate-400'
-            }`}
-          >
-            {summary?.status === 'COMPLETED'
-              ? '✓ COMPLETED'
-              : summary?.status === 'IN_PROGRESS'
-              ? 'IN PROGRESS'
-              : 'NOT STARTED'}
-          </span>
-        </div>
+
+        <span
+          className={`px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider border self-start sm:self-auto ${
+            summary?.status === 'COMPLETED'
+              ? 'bg-[#E8F2EE] border-[#C5E0D5] text-[#1E5C4A]'
+              : 'bg-[#FDF6EC] border-[#F3E1C5] text-[#A8752B]'
+          }`}
+        >
+          {summary?.status === 'COMPLETED' ? '✓ Verification Complete' : 'In Progress'}
+        </span>
       </div>
 
-      {/* Progress Stepper */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pb-2">
-        {steps.map((s) => {
-          const isCurrent = activeStep === s.num;
-          const isDone = s.done;
-
-          return (
-            <button
-              key={s.num}
-              type="button"
-              onClick={() => (isDone || s.num <= (activeStep + 1) ? setActiveStep(s.num) : null)}
-              className={`p-3 rounded-2xl border text-left transition-all ${
-                isDone
-                  ? 'bg-emerald-950/30 border-emerald-800/80 text-emerald-300'
-                  : isCurrent
-                  ? 'bg-blue-950/40 border-blue-600 text-blue-300 shadow-md ring-1 ring-blue-500'
-                  : 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-60'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider">
-                  Step {s.num}
-                </span>
-                <span className="text-xs">
-                  {isDone ? '✓' : isCurrent ? '●' : '○'}
-                </span>
-              </div>
-              <p className="text-xs font-semibold text-white mt-1 truncate">{s.title}</p>
-            </button>
-          );
-        })}
+      {/* Step Waypoint Tabs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-b border-[#E5E2DC] pb-4">
+        {steps.map((s) => (
+          <button
+            key={s.num}
+            type="button"
+            onClick={() => setActiveStep(s.num)}
+            className={`p-3 sm:p-4 rounded-xl text-left transition-all border cursor-pointer ${
+              activeStep === s.num
+                ? 'bg-[#F9F3EE] border-[#B5652D] shadow-xs'
+                : s.done
+                ? 'bg-white border-[#E5E2DC] hover:border-[#D4D0C7]'
+                : 'bg-[#F7F5F1] border-transparent text-[#8A8D93]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-[#686D76]">Step {s.num}</span>
+              {s.done ? (
+                <span className="text-sm font-bold text-[#1E5C4A]">✓</span>
+              ) : (
+                <span className="text-sm font-bold text-[#8A8D93]">○</span>
+              )}
+            </div>
+            <span className={`text-sm font-bold block mt-1 ${activeStep === s.num ? 'text-[#14161A]' : s.done ? 'text-[#14161A]' : 'text-[#8A8D93]'}`}>
+              {s.title}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Notifications */}
       {error && (
-        <div className="p-4 rounded-xl bg-red-900/40 border border-red-800 text-red-300 text-xs flex items-center space-x-2">
-          <span>⚠️ {error}</span>
-        </div>
-      )}
-      {success && (
-        <div className="p-4 rounded-xl bg-emerald-900/40 border border-emerald-800 text-emerald-300 text-xs flex items-center space-x-2">
-          <span>✓ {success}</span>
+        <div className="p-4 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm flex items-center gap-2 font-medium">
+          <span>⚠️</span>
+          <span>{error}</span>
         </div>
       )}
 
-      {/* STEP 1: KYC FORM */}
+      {success && (
+        <div className="p-4 rounded-xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-sm flex items-center gap-2 font-medium">
+          <span>✓</span>
+          <span>{success}</span>
+        </div>
+      )}
+
+      {/* Step 1: KYC */}
       {activeStep === 1 && (
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>🪪</span> Step 1: Know Your Customer (KYC)
-            </h3>
-            <span className="text-[11px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
-              Deterministic Mock Verification
-            </span>
+          <div className="p-4 bg-[#F7F5F1] border border-[#E5E2DC] rounded-xl">
+            <span className="text-sm font-bold text-[#14161A] block">Why we need your identity details</span>
+            <p className="text-sm text-[#686D76] mt-0.5">
+              Mandatory KYC verification ensures digital lending compliance, prevents fraud, and confirms loan proceeds reach the verified borrower.
+            </p>
           </div>
 
-          {summary?.kyc === 'VERIFIED' && kycData ? (
-            <div className="bg-emerald-950/20 border border-emerald-800/60 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-emerald-900/40 pb-2">
-                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                  <span>✓</span> KYC Verified
+          {kycData ? (
+            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm sm:text-base font-bold text-[#1E5C4A] flex items-center gap-1.5">
+                  <span>✓</span> Identity Verified ({kycData.id_type})
                 </span>
-                <span className="text-xs text-slate-400 font-mono">ID: {kycData.id_number_masked}</span>
+                <span className="font-mono text-sm text-[#686D76]">{kycData.id_number_masked}</span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                <div>
-                  <span className="text-slate-400 block">Full Name:</span>
-                  <span className="font-semibold text-white">{kycData.full_name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">ID Type:</span>
-                  <span className="font-semibold text-white">{kycData.id_type}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">City & State:</span>
-                  <span className="font-semibold text-white">{kycData.city}, {kycData.state}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">DOB:</span>
-                  <span className="font-semibold text-white">{kycData.date_of_birth}</span>
-                </div>
+              <div className="grid grid-cols-2 gap-3 text-sm text-[#686D76] pt-2 border-t border-[#E5E2DC]">
+                <div>Name: <strong className="text-[#14161A]">{kycData.full_name}</strong></div>
+                <div>DOB: <strong className="text-[#14161A]">{kycData.date_of_birth}</strong></div>
+                <div className="col-span-2">Address: <strong className="text-[#14161A]">{kycData.address_line_1}, {kycData.city}, {kycData.state} - {kycData.pincode}</strong></div>
               </div>
-              <div className="pt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(2)}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all"
-                >
-                  Proceed to Bank Account Verification →
-                </button>
+              <div className="pt-2 flex justify-end">
+                <Button variant="primary" size="md" onClick={() => setActiveStep(2)}>
+                  Continue to Bank Verification →
+                </Button>
               </div>
             </div>
           ) : (
             <form onSubmit={handleKYCSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Full Legal Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={kycForm.full_name}
-                    onChange={(e) => setKycForm({ ...kycForm, full_name: e.target.value })}
-                    placeholder="e.g. Rahul Sharma"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Date of Birth *</label>
-                  <input
-                    type="date"
-                    required
-                    value={kycForm.date_of_birth}
-                    onChange={(e) => setKycForm({ ...kycForm, date_of_birth: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Gender *</label>
-                  <select
-                    value={kycForm.gender}
-                    onChange={(e) => setKycForm({ ...kycForm, gender: e.target.value as Gender })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="MALE">Male</option>
-                    <option value="FEMALE">Female</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Legal Full Name"
+                  required
+                  value={kycForm.full_name}
+                  onChange={(e) => setKycForm({ ...kycForm, full_name: e.target.value })}
+                  placeholder="As per Government ID"
+                />
+
+                <Input
+                  label="Date of Birth"
+                  type="date"
+                  required
+                  value={kycForm.date_of_birth}
+                  onChange={(e) => setKycForm({ ...kycForm, date_of_birth: e.target.value })}
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Address Line 1 *</label>
-                  <input
-                    type="text"
-                    required
-                    value={kycForm.address_line_1}
-                    onChange={(e) => setKycForm({ ...kycForm, address_line_1: e.target.value })}
-                    placeholder="Flat / Building / Street"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Address Line 2</label>
-                  <input
-                    type="text"
-                    value={kycForm.address_line_2}
-                    onChange={(e) => setKycForm({ ...kycForm, address_line_2: e.target.value })}
-                    placeholder="Locality / Landmark"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
+                <Select
+                  label="ID Document Type"
+                  options={[
+                    { value: 'PAN', label: 'PAN Card' },
+                    { value: 'AADHAAR', label: 'Aadhaar Card' },
+                    { value: 'PASSPORT', label: 'Passport' },
+                    { value: 'DRIVING_LICENSE', label: 'Driving License' },
+                    { value: 'VOTER_ID', label: 'Voter ID' },
+                  ]}
+                  value={kycForm.id_type}
+                  onChange={(e) => setKycForm({ ...kycForm, id_type: e.target.value as IDType })}
+                />
+
+                <Input
+                  label="Document Number"
+                  required
+                  value={kycForm.id_number}
+                  onChange={(e) => setKycForm({ ...kycForm, id_number: e.target.value.toUpperCase() })}
+                  placeholder="e.g. ABCDE1234F"
+                  className="font-mono uppercase"
+                />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">City *</label>
-                  <input
-                    type="text"
-                    required
-                    value={kycForm.city}
-                    onChange={(e) => setKycForm({ ...kycForm, city: e.target.value })}
-                    placeholder="e.g. Hyderabad"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">State *</label>
-                  <input
-                    type="text"
-                    required
-                    value={kycForm.state}
-                    onChange={(e) => setKycForm({ ...kycForm, state: e.target.value })}
-                    placeholder="e.g. Telangana"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Pincode *</label>
-                  <input
-                    type="text"
-                    required
-                    value={kycForm.pincode}
-                    onChange={(e) => setKycForm({ ...kycForm, pincode: e.target.value })}
-                    placeholder="e.g. 500081"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
+              <Input
+                label="Address Line 1"
+                required
+                value={kycForm.address_line_1}
+                onChange={(e) => setKycForm({ ...kycForm, address_line_1: e.target.value })}
+                placeholder="Flat / House No., Building Name, Street"
+              />
+
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  label="City"
+                  required
+                  value={kycForm.city}
+                  onChange={(e) => setKycForm({ ...kycForm, city: e.target.value })}
+                  placeholder="City"
+                />
+                <Input
+                  label="State"
+                  required
+                  value={kycForm.state}
+                  onChange={(e) => setKycForm({ ...kycForm, state: e.target.value })}
+                  placeholder="State"
+                />
+                <Input
+                  label="PIN Code"
+                  required
+                  maxLength={6}
+                  value={kycForm.pincode}
+                  onChange={(e) => setKycForm({ ...kycForm, pincode: e.target.value })}
+                  placeholder="500081"
+                  className="font-mono"
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Government ID Type *</label>
-                  <select
-                    value={kycForm.id_type}
-                    onChange={(e) => setKycForm({ ...kycForm, id_type: e.target.value as IDType })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="PAN">PAN Card</option>
-                    <option value="AADHAAR">Aadhaar Card</option>
-                    <option value="PASSPORT">Passport</option>
-                    <option value="DRIVING_LICENSE">Driving License</option>
-                    <option value="VOTER_ID">Voter ID</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">ID Number / Reference *</label>
-                  <input
-                    type="text"
-                    required
-                    value={kycForm.id_number}
-                    onChange={(e) => setKycForm({ ...kycForm, id_number: e.target.value })}
-                    placeholder="e.g. ABCDE1234F"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-                >
-                  {submitting ? 'Verifying KYC...' : 'Verify & Submit KYC →'}
-                </button>
+              <div className="pt-2 flex justify-end">
+                <Button type="submit" variant="primary" size="md" isLoading={submitting}>
+                  Verify Identity Details →
+                </Button>
               </div>
             </form>
           )}
         </div>
       )}
 
-      {/* STEP 2: BANK ACCOUNT FORM */}
+      {/* Step 2: Bank Account */}
       {activeStep === 2 && (
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>🏦</span> Step 2: Disbursement Bank Account
-            </h3>
-            <span className="text-[11px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
-              Mock Penny-Drop Verification
-            </span>
+          <div className="p-4 bg-[#F7F5F1] border border-[#E5E2DC] rounded-xl">
+            <span className="text-sm font-bold text-[#14161A] block">Why we need your bank details</span>
+            <p className="text-sm text-[#686D76] mt-0.5">
+              Your approved loan amount will be transferred directly into this account upon underwriter authorization.
+            </p>
           </div>
 
-          {summary?.bank_account === 'VERIFIED' && bankData ? (
-            <div className="bg-emerald-950/20 border border-emerald-800/60 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-emerald-900/40 pb-2">
-                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                  <span>✓</span> Bank Account Verified
+          {bankData ? (
+            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm sm:text-base font-bold text-[#1E5C4A] flex items-center gap-1.5">
+                  <span>✓</span> Bank Account Linked
                 </span>
-                <span className="text-xs text-slate-400 font-mono">Account: {bankData.account_number_masked}</span>
+                <span className="font-mono text-sm text-[#686D76]">{bankData.account_number_masked}</span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
-                <div>
-                  <span className="text-slate-400 block">Holder Name:</span>
-                  <span className="font-semibold text-white">{bankData.account_holder_name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">Bank Name:</span>
-                  <span className="font-semibold text-white">{bankData.bank_name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block">IFSC Code:</span>
-                  <span className="font-semibold text-white font-mono">{bankData.ifsc}</span>
-                </div>
+              <div className="grid grid-cols-2 gap-3 text-sm text-[#686D76] pt-2 border-t border-[#E5E2DC]">
+                <div>Bank: <strong className="text-[#14161A]">{bankData.bank_name}</strong></div>
+                <div>IFSC: <strong className="text-[#14161A] font-mono">{bankData.ifsc}</strong></div>
+                <div className="col-span-2">Holder: <strong className="text-[#14161A]">{bankData.account_holder_name}</strong></div>
               </div>
-              <div className="pt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(3)}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all"
-                >
-                  Proceed to Selfie Verification →
-                </button>
+              <div className="pt-2 flex justify-end">
+                <Button variant="primary" size="md" onClick={() => setActiveStep(3)}>
+                  Continue to Photo Verification →
+                </Button>
               </div>
             </div>
           ) : (
             <form onSubmit={handleBankSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Account Holder Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={bankForm.account_holder_name}
-                    onChange={(e) => setBankForm({ ...bankForm, account_holder_name: e.target.value })}
-                    placeholder="Must match KYC full name"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Bank Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={bankForm.bank_name}
-                    onChange={(e) => setBankForm({ ...bankForm, bank_name: e.target.value })}
-                    placeholder="e.g. HDFC Bank"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
+              <Input
+                label="Account Holder Full Name"
+                required
+                value={bankForm.account_holder_name}
+                onChange={(e) => setBankForm({ ...bankForm, account_holder_name: e.target.value })}
+                placeholder="As per bank passbook / statement"
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Account Number *</label>
-                  <input
-                    type="password"
-                    required
-                    value={bankForm.account_number}
-                    onChange={(e) => setBankForm({ ...bankForm, account_number: e.target.value })}
-                    placeholder="Enter full bank account number"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">IFSC Code (11 characters) *</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={11}
-                    value={bankForm.ifsc}
-                    onChange={(e) => setBankForm({ ...bankForm, ifsc: e.target.value.toUpperCase() })}
-                    placeholder="e.g. HDFC0001234"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono uppercase focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
+                <Input
+                  label="Bank Account Number"
+                  required
+                  value={bankForm.account_number}
+                  onChange={(e) => setBankForm({ ...bankForm, account_number: e.target.value })}
+                  placeholder="Enter account number"
+                  className="font-mono"
+                />
+
+                <Input
+                  label="IFSC Code"
+                  required
+                  maxLength={11}
+                  value={bankForm.ifsc}
+                  onChange={(e) => setBankForm({ ...bankForm, ifsc: e.target.value.toUpperCase() })}
+                  placeholder="HDFC0001234"
+                  className="font-mono uppercase"
+                />
               </div>
 
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-                >
-                  {submitting ? 'Verifying Account...' : 'Verify Bank Account →'}
-                </button>
+              <Input
+                label="Bank Name"
+                required
+                value={bankForm.bank_name}
+                onChange={(e) => setBankForm({ ...bankForm, bank_name: e.target.value })}
+                placeholder="e.g. HDFC Bank / State Bank of India"
+              />
+
+              <div className="pt-2 flex justify-end">
+                <Button type="submit" variant="primary" size="md" isLoading={submitting}>
+                  Verify Bank Account →
+                </Button>
               </div>
             </form>
           )}
         </div>
       )}
 
-      {/* STEP 3: SELFIE VERIFICATION */}
+      {/* Step 3: Selfie */}
       {activeStep === 3 && (
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>📸</span> Step 3: Live Photo / Selfie Verification
-            </h3>
-            <span className="text-[11px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
-              Simulated Liveness Check
-            </span>
-          </div>
-
-          {summary?.selfie === 'VERIFIED' && selfieData ? (
-            <div className="bg-emerald-950/20 border border-emerald-800/60 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-emerald-900/40 pb-2">
-                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                  <span>✓</span> Live Photo Verified
-                </span>
-                <span className="text-xs text-slate-400">Type: {selfieData.verification_type}</span>
-              </div>
-              <p className="text-xs text-slate-300">
-                Live biometric presence check passed deterministically. Metadata stored in audit log.
-              </p>
-              <div className="pt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(4)}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all"
-                >
-                  Proceed to Final Declaration →
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 text-center space-y-4">
-              <div className="w-16 h-16 rounded-full bg-blue-950 border border-blue-700 flex items-center justify-center mx-auto text-2xl">
-                🤳
-              </div>
-              <div className="max-w-md mx-auto">
-                <h4 className="text-sm font-bold text-white">Live Liveness & Identity Verification</h4>
-                <p className="text-xs text-slate-400 mt-1">
-                  In production, this module captures a real-time biometric snapshot. For this assessment, click below to execute simulated verification.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleSelfieSubmit}
-                disabled={submitting}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-              >
-                {submitting ? 'Verifying Live Photo...' : 'Capture & Verify Selfie →'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* STEP 4: DECLARATION */}
-      {activeStep === 4 && (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>✍️</span> Step 4: Borrower Legal Declaration
-            </h3>
-            <span className="text-[11px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
-              Digital Terms v1.0
-            </span>
-          </div>
-
-          {summary?.declaration === 'ACCEPTED' && declarationData ? (
-            <div className="bg-emerald-950/20 border border-emerald-800/60 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-emerald-900/40 pb-2">
-                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                  <span>✓</span> Declaration Signed & Accepted
-                </span>
-                <span className="text-xs text-slate-400 font-mono">
-                  Timestamp: {new Date(declarationData.accepted_at).toLocaleString()}
-                </span>
-              </div>
-              <p className="text-xs text-slate-300">
-                You have confirmed all loan terms, financial commitments, and authorized EZFINANZ to process your application.
-              </p>
-              <div className="pt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(5)}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all"
-                >
-                  View Final Verification Summary →
-                </button>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleDeclarationSubmit} className="space-y-4">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2 max-h-48 overflow-y-auto font-sans leading-relaxed">
-                <p className="font-bold text-white">EZFINANZ DIGITAL LENDING DECLARATION (v1.0)</p>
-                <p>
-                  1. I declare that all information provided during this loan application (including personal identity, monthly income, existing debts, and banking details) is complete, true, and accurate to the best of my knowledge.
-                </p>
-                <p>
-                  2. I understand that fraudulent declarations or misrepresented financial records may result in loan cancellation and legal proceedings under applicable laws.
-                </p>
-                <p>
-                  3. I authorize EZFINANZ and its lending partners to verify my credit history, bank statements, and employment details for underwriting and credit risk evaluation.
-                </p>
-                <p>
-                  4. I agree to the reducing-balance EMI schedule, processing fee deductions, and monthly repayment obligations selected in my loan offer package.
-                </p>
-              </div>
-
-              <div className="flex items-start space-x-3 pt-2">
-                <input
-                  type="checkbox"
-                  id="declaration-agree"
-                  checked={declarationAccepted}
-                  onChange={(e) => setDeclarationAccepted(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-950 text-blue-600 focus:ring-blue-500"
-                />
-                <label htmlFor="declaration-agree" className="text-xs text-slate-200 cursor-pointer">
-                  <span className="font-semibold text-white">I agree and confirm</span> that I have read, understood, and accepted all terms and conditions of this loan declaration.
-                </label>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={submitting || !declarationAccepted}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-                >
-                  {submitting ? 'Recording Acceptance...' : 'Sign Declaration & Complete Verification →'}
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      )}
-
-      {/* STEP 5: COMPLETED STATE */}
-      {activeStep === 5 && (
-        <div className="bg-emerald-950/30 border border-emerald-700/80 rounded-2xl p-6 text-center space-y-4">
-          <div className="w-14 h-14 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center mx-auto text-2xl font-black">
-            ✓
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">Verification Pipeline Complete!</h3>
-            <p className="text-xs text-emerald-300 mt-1 max-w-md mx-auto">
-              All 4 verification stages (KYC, Bank Account, Live Selfie, and Legal Declaration) have been verified and permanently recorded.
+          <div className="p-4 bg-[#F7F5F1] border border-[#E5E2DC] rounded-xl">
+            <span className="text-sm font-bold text-[#14161A] block">Liveness verification (Simulated Demo)</span>
+            <p className="text-sm text-[#686D76] mt-0.5">
+              Confirm your presence with a quick photo verification to prevent identity theft.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left max-w-xl mx-auto pt-2">
-            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl">
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">KYC</span>
-              <span className="text-xs text-emerald-400 font-semibold">✓ Verified</span>
+          {selfieData ? (
+            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm sm:text-base font-bold text-[#1E5C4A] flex items-center gap-1.5">
+                  <span>✓</span> Live Photo Confirmed
+                </span>
+                <span className="text-xs text-[#686D76]">ID: {selfieData.id.slice(0, 8)}...</span>
+              </div>
+              <div className="pt-2 flex justify-end">
+                <Button variant="primary" size="md" onClick={() => setActiveStep(4)}>
+                  Continue to Legal Declaration →
+                </Button>
+              </div>
             </div>
-            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl">
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">Bank</span>
-              <span className="text-xs text-emerald-400 font-semibold">✓ Verified</span>
+          ) : (
+            <div className="p-8 bg-white border border-[#E5E2DC] rounded-xl text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-[#F9F3EE] border border-[#ECCBB3] flex items-center justify-center mx-auto text-2xl text-[#9C4F1C]">
+                📷
+              </div>
+              <div>
+                <span className="text-base font-bold text-[#14161A] block">Live Camera Verification</span>
+                <p className="text-sm text-[#686D76] max-w-sm mx-auto mt-1">
+                  Ensure your face is clearly visible, well-lit, and without sunglasses or hats.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Button variant="primary" size="md" isLoading={submitting} onClick={handleSelfieSubmit}>
+                  Capture & Confirm Photo →
+                </Button>
+              </div>
             </div>
-            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl">
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">Selfie</span>
-              <span className="text-xs text-emerald-400 font-semibold">✓ Verified</span>
-            </div>
-            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl">
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">Declaration</span>
-              <span className="text-xs text-emerald-400 font-semibold">✓ Accepted</span>
-            </div>
-          </div>
-
-          <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-xl max-w-xl mx-auto text-xs text-slate-300">
-            <span className="font-bold text-white block mb-1">Next Step: Underwriting & Administrative Review</span>
-            Your loan application is now in <span className="text-blue-400 font-mono font-bold">UNDER_REVIEW</span> status. Credit underwriters will review your submitted application files before loan approval.
-          </div>
+          )}
         </div>
       )}
-    </div>
+
+      {/* Step 4: Declaration */}
+      {activeStep === 4 && (
+        <div className="space-y-5">
+          <div className="p-4 bg-[#F7F5F1] border border-[#E5E2DC] rounded-xl">
+            <span className="text-sm font-bold text-[#14161A] block">Borrower Consent & Declaration</span>
+            <p className="text-sm text-[#686D76] mt-0.5">
+              Review and agree to the digital lending terms and credit underwriting assessment terms.
+            </p>
+          </div>
+
+          {declarationData ? (
+            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm sm:text-base font-bold text-[#1E5C4A] flex items-center gap-1.5">
+                  <span>✓</span> Legal Declaration Accepted ({declarationData.declaration_version})
+                </span>
+                <span className="text-xs text-[#686D76]">{new Date(declarationData.accepted_at).toLocaleString('en-IN')}</span>
+              </div>
+              <p className="text-sm text-[#686D76]">
+                All verification steps have been completed. Your application is now in the underwriting queue.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleDeclarationSubmit} className="space-y-4">
+              <div className="p-4 bg-white border border-[#E5E2DC] rounded-xl text-sm text-[#686D76] space-y-2 max-h-48 overflow-y-auto leading-relaxed">
+                <p>1. I confirm that all information, documents, and income details provided in this application are authentic and accurate.</p>
+                <p>2. I authorize EZFINANZ and its lending partners to verify my credit history, KYC documentation, and employment records.</p>
+                <p>3. I agree to repay the agreed loan amount and monthly EMIs according to the selected schedule upon disbursement.</p>
+              </div>
+
+              <label className="flex items-start gap-3 p-3.5 bg-[#F9F3EE] border border-[#ECCBB3] rounded-xl cursor-pointer text-sm text-[#14161A]">
+                <input
+                  type="checkbox"
+                  checked={declarationAccepted}
+                  onChange={(e) => setDeclarationAccepted(e.target.checked)}
+                  className="mt-1 rounded border-[#D4D0C7] text-[#B5652D] focus:ring-[#B5652D]"
+                />
+                <span className="font-medium">
+                  I have read and unconditionally accept the loan declaration terms and privacy policies.
+                </span>
+              </label>
+
+              <div className="pt-2 flex justify-end">
+                <Button type="submit" variant="primary" size="md" isLoading={submitting}>
+                  Complete Verification & Submit for Review →
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* Step 5: Completed state */}
+      {activeStep === 5 && (
+        <div className="p-6 sm:p-8 bg-[#E8F2EE] border border-[#C5E0D5] rounded-2xl text-center space-y-3">
+          <span className="text-3xl block text-[#1E5C4A]">✓</span>
+          <h3 className="text-xl font-bold text-[#1E5C4A] font-editorial">
+            Customer Verification Complete
+          </h3>
+          <p className="text-sm text-[#14161A] max-w-md mx-auto leading-relaxed">
+            All four verification milestones (Identity, Bank Account, Photo, and Legal Declaration) are recorded in the ledger. Your file has been transitioned to our Credit Underwriting team.
+          </p>
+        </div>
+      )}
+    </Card>
   );
 };

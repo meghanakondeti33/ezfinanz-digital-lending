@@ -12,12 +12,18 @@ export interface User {
   created_at: string;
 }
 
+export interface GoogleAuthPayload {
+  credential?: string;
+  access_token?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
+  loginWithGoogle: (payload: string | GoogleAuthPayload) => Promise<User>;
   register: (email: string, phone: string, password: string) => Promise<void>;
   logout: () => void;
   refetchUser: () => Promise<void>;
@@ -75,6 +81,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async (payload: string | GoogleAuthPayload): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const body = typeof payload === 'string' ? { credential: payload } : payload;
+      const response = await apiClient.post<{ access_token: string }>('/auth/google', body);
+      const newToken = response.data.access_token;
+      localStorage.setItem(TOKEN_KEY, newToken);
+      setToken(newToken);
+      // Fetch user profile immediately
+      const meResponse = await apiClient.get<User>('/auth/me', {
+        headers: { Authorization: `Bearer ${newToken}` },
+      });
+      setUser(meResponse.data);
+      return meResponse.data;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const register = async (email: string, phone: string, password: string) => {
     setIsLoading(true);
     try {
@@ -104,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         isLoading,
         login,
+        loginWithGoogle,
         register,
         logout,
         refetchUser: fetchCurrentUser,

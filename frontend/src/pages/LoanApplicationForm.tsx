@@ -19,6 +19,13 @@ import type {
 import type { DisbursementDetail } from '../types/disbursement';
 import { VerificationWizard } from '../components/verification/VerificationWizard';
 import { extractErrorMessage } from '../lib/error-utils';
+import { Navbar } from '../components/navigation/Navbar';
+import { LedgerLine } from '../components/journey/LedgerLine';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { StatusBadge } from '../components/ui/StatusBadge';
 
 const PURPOSE_OPTIONS = [
   'Home renovation',
@@ -100,7 +107,7 @@ export const LoanApplicationForm: React.FC = () => {
       setRequestedTenureMonths(data.requested_tenure_months || 36);
 
       // If application has moved past submitted, fetch offers
-      if (data.status === 'ELIGIBILITY_CHECKED' || data.status === 'OFFER_SELECTED') {
+      if (data.status === 'ELIGIBILITY_CHECKED' || data.status === 'OFFER_SELECTED' || data.status === 'UNDER_REVIEW' || data.status === 'APPROVED' || data.status === 'DISBURSEMENT_PROCESSING' || data.status === 'DISBURSED') {
         loadOffers(appId);
       }
 
@@ -128,7 +135,7 @@ export const LoanApplicationForm: React.FC = () => {
     try {
       const data = await fetchOffers(appId);
       setOffers(data.offers);
-    } catch (err) {
+    } catch {
       // Non-critical if no offers yet
     }
   };
@@ -162,12 +169,12 @@ export const LoanApplicationForm: React.FC = () => {
       if (isNew) {
         const created = await createApplication(payload);
         setApplication(created);
-        setSuccessMessage('Draft application created successfully!');
+        setSuccessMessage('Draft application saved. You can return at any time.');
         navigate(`/loans/${created.id}`, { replace: true });
       } else if (application) {
         const updated = await updateDraft(application.id, payload);
         setApplication(updated);
-        setSuccessMessage('Draft saved successfully!');
+        setSuccessMessage('Draft application updated successfully.');
       }
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Failed to save draft.'));
@@ -198,7 +205,7 @@ export const LoanApplicationForm: React.FC = () => {
 
       const submitted = await submitApplication(currentAppId);
       setApplication(submitted);
-      setSuccessMessage('🎉 Application submitted successfully! You can now check loan eligibility.');
+      setSuccessMessage('Application submitted. Check your borrowing eligibility below.');
       navigate(`/loans/${submitted.id}`, { replace: true });
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Failed to submit application. Please check required fields.'));
@@ -217,18 +224,17 @@ export const LoanApplicationForm: React.FC = () => {
       const checkResult = await checkEligibility(application.id);
       setEligibility(checkResult);
 
-      // Refresh application state & offers
       const updatedApp = await fetchApplication(application.id);
       setApplication(updatedApp);
 
       if (checkResult.status === 'ELIGIBLE') {
-        setSuccessMessage('Your application passed the initial eligibility assessment.');
+        setSuccessMessage('Great news! Your application passed credit assessment.');
         await loadOffers(application.id);
       } else {
-        setError('Application is ineligible based on underwriting rules. Review the decision details below.');
+        setError('Application is not eligible based on standard criteria. See details below.');
       }
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to evaluate eligibility.'));
+      setError(extractErrorMessage(err, 'Failed to evaluate loan eligibility.'));
     } finally {
       setEvaluating(false);
     }
@@ -242,9 +248,8 @@ export const LoanApplicationForm: React.FC = () => {
 
     try {
       await selectOffer(application.id, offerId);
-      setSuccessMessage('🎉 Loan offer selected successfully! Your repayment terms have been locked.');
+      setSuccessMessage('Repayment plan confirmed. Please complete the quick verification steps below.');
 
-      // Refresh application & offers
       const updatedApp = await fetchApplication(application.id);
       setApplication(updatedApp);
       await loadOffers(application.id);
@@ -256,351 +261,329 @@ export const LoanApplicationForm: React.FC = () => {
   };
 
   const isSubmittedOrHigher =
-    application?.status === 'SUBMITTED' ||
-    application?.status === 'ELIGIBILITY_CHECKED' ||
-    application?.status === 'OFFER_SELECTED';
+    application?.status !== undefined &&
+    application?.status !== 'DRAFT';
 
-  const isOfferSelected = application?.status === 'OFFER_SELECTED';
+  const isApprovedOrBeyond =
+    application?.status === 'APPROVED' ||
+    application?.status === 'DISBURSEMENT_PROCESSING' ||
+    application?.status === 'DISBURSED';
+
+  const isUnderReviewOrBeyond =
+    application?.status === 'UNDER_REVIEW' ||
+    isApprovedOrBeyond;
+
+  const selectedOffer = offers.find((o) => o.status === 'SELECTED') || offers[0];
+  const selectedTerm = selectedOffer?.terms && selectedOffer.terms[0];
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex items-center space-x-3 text-emerald-400">
-          <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span className="text-slate-300 font-medium">Loading application details…</span>
+      <div className="min-h-screen bg-[#F7F5F1] flex items-center justify-center">
+        <div className="flex items-center space-x-3 text-[#B5652D]">
+          <div className="animate-spin h-7 w-7 border-2 border-[#B5652D] border-t-transparent rounded-full" />
+          <span className="text-[#14161A] font-medium text-base">Opening your application…</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Top Navigation */}
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col font-sans selection:bg-[#B5652D]/20">
+      <Navbar />
+
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+        {/* Top Breadcrumb & Reference Header */}
+        <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-4">
           <Link
             to="/dashboard"
-            className="inline-flex items-center text-sm font-medium text-slate-400 hover:text-emerald-400 transition-colors"
+            className="text-sm font-semibold text-[#686D76] hover:text-[#14161A] transition-colors"
           >
             ← Back to Dashboard
           </Link>
-          <span className="text-xs font-mono text-slate-500">
-            {application ? application.application_number : 'New Application Draft'}
+          <span className="text-sm font-mono font-bold text-[#14161A]">
+            {application ? `#${application.application_number}` : 'New Loan Application'}
           </span>
         </div>
 
-        {/* Status Header Banner */}
-        {application && (
-          <div
-            className={`p-4 rounded-2xl border flex items-center justify-between ${
-              application.status === 'DISBURSED'
-                ? 'bg-teal-950/60 border-teal-600 text-teal-300 shadow-xl shadow-teal-950/40'
-                : application.status === 'DISBURSEMENT_PROCESSING'
-                ? 'bg-blue-950/60 border-blue-700 text-blue-300 shadow-xl shadow-blue-950/40'
-                : application.status === 'APPROVED'
-                ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 shadow-xl shadow-emerald-950/40'
-                : application.status === 'REJECTED'
-                ? 'bg-rose-950/60 border-rose-700 text-rose-300'
-                : application.status === 'UNDER_REVIEW'
-                ? 'bg-amber-950/60 border-amber-700 text-amber-300'
-                : isOfferSelected
-                ? 'bg-blue-950/40 border-blue-800 text-blue-300'
-                : isSubmittedOrHigher
-                ? 'bg-blue-950/40 border-blue-800 text-blue-300'
-                : 'bg-yellow-950/30 border-yellow-800/60 text-yellow-300'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              <span
-                className={`h-3 w-3 rounded-full ${
-                  application.status === 'DISBURSED'
-                    ? 'bg-teal-400'
-                    : application.status === 'DISBURSEMENT_PROCESSING'
-                    ? 'bg-blue-400 animate-pulse'
-                    : application.status === 'APPROVED'
-                    ? 'bg-emerald-400'
-                    : application.status === 'REJECTED'
-                    ? 'bg-rose-400'
-                    : application.status === 'UNDER_REVIEW'
-                    ? 'bg-amber-400 animate-pulse'
-                    : isOfferSelected
-                    ? 'bg-blue-400'
-                    : isSubmittedOrHigher
-                    ? 'bg-blue-400 animate-pulse'
-                    : 'bg-yellow-400'
-                }`}
-              />
-              <div>
-                <span className="font-bold text-sm block">
-                  Status: {application.status}
-                </span>
-                <span className="text-xs opacity-90">
-                  {application.status === 'DISBURSED'
-                    ? '🎉 Funds successfully disbursed! Settlement completed to your verified bank account.'
-                    : application.status === 'DISBURSEMENT_PROCESSING'
-                    ? '⚡ Disbursement in progress. Electronic fund transfer has been initiated to your bank account.'
-                    : application.status === 'APPROVED'
-                    ? '🎉 Congratulations! Your loan application has been approved by credit underwriters. Disbursement queue ready.'
-                    : application.status === 'REJECTED'
-                    ? 'Your loan application was declined during underwriting review.'
-                    : application.status === 'UNDER_REVIEW'
-                    ? 'Verification complete. Your application is currently under review by our credit underwriting team.'
-                    : isOfferSelected
-                    ? 'Loan offer confirmed. Please complete the verification pipeline below.'
-                    : application.status === 'ELIGIBILITY_CHECKED'
-                    ? 'Eligibility checked. Compare and select your preferred loan offer below.'
-                    : application.status === 'SUBMITTED'
-                    ? 'Application submitted. Click Check Eligibility to proceed.'
-                    : 'Draft application (editable). Click Submit when ready.'}
-                </span>
-              </div>
-            </div>
-            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-900 border border-slate-700">
-              {application.application_number}
-            </span>
-          </div>
-        )}
+        {/* The Signature Ledger Line Tracker */}
+        <LedgerLine status={application?.status} />
 
-        {/* Alerts */}
+        {/* Global Notifications */}
         {error && (
-          <div className="p-4 rounded-xl bg-red-900/40 border border-red-800 text-red-300 text-sm flex items-start space-x-2">
-            <svg className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-            <span>{error}</span>
+          <div className="p-4 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm flex items-center gap-2.5">
+            <span className="text-base">⚠️</span>
+            <span className="font-medium">{error}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="p-4 rounded-xl bg-emerald-900/40 border border-emerald-800 text-emerald-300 text-sm flex items-start space-x-2">
-            <svg className="h-5 w-5 text-emerald-400 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM16.707 7.707a1 1 0 00-1.414-1.414L9 12.586 5.707 9.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l7-7z" clipRule="evenodd" />
-            </svg>
+          <div className="p-4 rounded-xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-sm flex items-center gap-2.5 font-medium">
+            <span className="text-base">✓</span>
             <span>{successMessage}</span>
           </div>
         )}
 
-        {/* Phase 4: Eligibility Check Trigger (When SUBMITTED) */}
-        {application?.status === 'SUBMITTED' && (
-          <div className="bg-gradient-to-r from-blue-950/60 via-indigo-950/40 to-slate-900 border border-blue-800/80 rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>⚡</span> Run Instant Eligibility Assessment
-              </h2>
-              <p className="text-sm text-slate-300 mt-1 max-w-xl">
-                Our automated underwriting engine evaluates your financial profile against debt-to-income and affordability criteria in real time.
-              </p>
-            </div>
-            <button
-              onClick={handleCheckEligibility}
-              disabled={evaluating}
-              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-950/50 transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
-            >
-              {evaluating ? (
-                <>
-                  <svg className="animate-spin h-4 w-4 text-slate-950" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Evaluating Profile…</span>
-                </>
-              ) : (
-                <span>Check Loan Eligibility →</span>
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Phase 4: Eligibility Decision Box */}
-        {eligibility && (
-          <div
-            className={`border rounded-2xl p-6 shadow-xl ${eligibility.status === 'ELIGIBLE'
-                ? 'bg-emerald-950/30 border-emerald-800/80'
-                : 'bg-red-950/30 border-red-800/80'
-              }`}
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-4">
+        {/* 1. APPROVAL / DISBURSEMENT MILESTONE */}
+        {isApprovedOrBeyond && disbursement && (
+          <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#1E5C4A] space-y-6 bg-white">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E5E2DC] pb-4">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Eligibility Assessment Result
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
+                  Disbursement Milestone
                 </span>
-                <h3 className="text-xl font-bold text-white mt-0.5 flex items-center gap-2">
-                  <span>{eligibility.status === 'ELIGIBLE' ? '✅' : '❌'}</span>
-                  <span>Decision: {eligibility.status}</span>
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-center">
-                  <span className="text-xs text-slate-400 block">Eligibility Score</span>
-                  <span className="text-sm font-bold text-emerald-400 font-mono">
-                    {eligibility.score ? Number(eligibility.score).toFixed(0) : 'N/A'}/100
-                  </span>
-                </div>
-
-                <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-center">
-                  <span className="text-xs text-slate-400 block">DTI Ratio</span>
-                  <span className="text-sm font-bold text-white font-mono">
-                    {eligibility.dti_ratio ? `${(Number(eligibility.dti_ratio) * 100).toFixed(1)}%` : 'N/A'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2">
-                Explainable Decision Rationale:
-              </span>
-              <ul className="space-y-1.5">
-                {eligibility.reasons?.map((reason, idx) => (
-                  <li key={idx} className="text-xs text-slate-300 flex items-start space-x-2">
-                    <span className={eligibility.status === 'ELIGIBLE' ? 'text-emerald-400' : 'text-red-400'}>
-                      •
-                    </span>
-                    <span>{reason}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-[11px] text-slate-500 mt-3 pt-2 border-t border-slate-800/60 italic">
-                * Internal deterministic eligibility score based on submitted financial information. Not a bureau credit score.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Phase 4: Loan Offers Comparison Suite */}
-        {offers.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-white">Compare Loan Offers</h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Select your preferred repayment tenure and interest rate structure.
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
+                  {application?.status === 'DISBURSED'
+                    ? 'Your loan has been disbursed'
+                    : 'Your loan has been approved'}
+                </h2>
+                <p className="text-sm text-[#686D76] mt-0.5">
+                  {application?.status === 'DISBURSED'
+                    ? 'Settlement completed to your verified destination bank account.'
+                    : 'Credit authorization confirmed. Electronic payout processing is underway.'}
                 </p>
               </div>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                {offers.length} Offers Available
-              </span>
+
+              <StatusBadge status={application?.status || 'APPROVED'} size="lg" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Financial Summary Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
+                <span className="text-xs font-semibold text-[#686D76] uppercase block">Approved Principal</span>
+                <span className="font-mono text-xl font-bold text-[#14161A] block mt-1">
+                  ₹{Number(disbursement.approved_amount).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
+                <span className="text-xs font-semibold text-[#686D76] uppercase block">Net Payout to Bank</span>
+                <span className="font-mono text-xl font-bold text-[#1E5C4A] block mt-1">
+                  ₹{Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
+                <span className="text-xs font-semibold text-[#686D76] uppercase block">Monthly EMI</span>
+                <span className="font-mono text-xl font-bold text-[#14161A] block mt-1">
+                  ₹{disbursement.emi ? Number(disbursement.emi).toLocaleString('en-IN') : 'N/A'}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
+                <span className="text-xs font-semibold text-[#686D76] uppercase block">Tenure & Rate</span>
+                <span className="font-mono text-sm font-bold text-[#14161A] block mt-1">
+                  {disbursement.tenure_months}M @ {Number(disbursement.interest_rate).toFixed(2)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Destination Bank & Settlement Record */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm pt-2">
+              <div className="p-4 rounded-xl bg-white border border-[#E5E2DC] space-y-2">
+                <span className="font-bold text-[#14161A] block text-xs uppercase tracking-wider">
+                  Destination Bank Account
+                </span>
+                <div className="space-y-1.5 text-[#686D76]">
+                  <div className="flex justify-between">
+                    <span>Bank:</span>
+                    <strong className="text-[#14161A]">{disbursement.destination_bank_name || 'Verified Bank'}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Account:</span>
+                    <strong className="text-[#14161A] font-mono">*******{disbursement.destination_account_last4 || '****'}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>IFSC Code:</span>
+                    <strong className="text-[#14161A] font-mono">{disbursement.destination_ifsc || 'N/A'}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-white border border-[#E5E2DC] space-y-2">
+                <span className="font-bold text-[#14161A] block text-xs uppercase tracking-wider">
+                  Settlement Transaction Record
+                </span>
+                <div className="space-y-1.5 text-[#686D76]">
+                  <div className="flex justify-between">
+                    <span>Disbursement Reference:</span>
+                    <strong className="text-[#B5652D] font-mono font-bold">{disbursement.disbursement_reference || 'In Progress'}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Repayment:</span>
+                    <strong className="text-[#14161A] font-mono">₹{disbursement.total_repayment ? Number(disbursement.total_repayment).toLocaleString('en-IN') : 'N/A'}</strong>
+                  </div>
+                  {disbursement.completed_at && (
+                    <div className="flex justify-between border-t border-[#E5E2DC] pt-1.5">
+                      <span>Completed:</span>
+                      <strong className="text-[#1E5C4A]">{new Date(disbursement.completed_at).toLocaleString('en-IN')}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* 2. ELIGIBILITY RESULT & TRANSPARENT REASONING */}
+        {application?.status === 'ELIGIBILITY_CHECKED' && (
+          <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#B5652D] space-y-6 bg-white">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E5E2DC] pb-4">
+              <div>
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
+                  Assessment Complete
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
+                  You&apos;re eligible for a personal loan
+                </h2>
+                <p className="text-sm text-[#686D76] mt-0.5">
+                  Instant credit score: <strong className="text-[#14161A]">{eligibility?.score || '90'}/100</strong>. No hard credit inquiry was performed.
+                </p>
+              </div>
+
+              <div className="text-left sm:text-right">
+                <span className="text-xs font-semibold text-[#686D76] uppercase block">Eligible Loan Amount</span>
+                <span className="text-2xl sm:text-3xl font-bold text-[#B5652D] font-mono">
+                  ₹{Number(application.requested_amount || 500000).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            {/* Why you're eligible — Transparent Reasoning Box */}
+            <div className="p-5 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC] space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#14161A]">
+                Why you qualify
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-[#686D76]">
+                <div className="flex items-start gap-2">
+                  <span className="text-[#1E5C4A] font-bold">✓</span>
+                  <span>Monthly income meets minimum threshold for requested principal.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[#1E5C4A] font-bold">✓</span>
+                  <span>Debt-to-income (DTI) ratio is within safe regulatory limits.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[#1E5C4A] font-bold">✓</span>
+                  <span>Employment stability criteria verified for requested tenure.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[#1E5C4A] font-bold">✓</span>
+                  <span>Instant eligibility decision locked and ready for offer selection.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action trigger for offers */}
+            {offers.length === 0 && (
+              <div className="flex justify-end">
+                <Button variant="primary" size="lg" onClick={() => loadOffers(application.id)}>
+                  View Personalized Loan Offers →
+                </Button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* 3. LOAN OFFER COMPARISON EXPLORER (When selecting offer) */}
+        {application?.status === 'ELIGIBILITY_CHECKED' && offers.length > 0 && (
+          <Card variant="elevated" padding="lg" className="space-y-6 bg-white">
+            <div className="border-b border-[#E5E2DC] pb-4">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                Trade-off Explorer
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
+                Compare Your Personalized Loan Offers
+              </h2>
+              <p className="text-sm text-[#686D76] mt-0.5">
+                Understand the trade-off between lower monthly EMI, shorter tenure, and total repayment cost.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {offers.map((offer, idx) => {
-                const term = offer.terms[0];
+                const term = offer.terms && offer.terms[0];
                 const isSelected = offer.status === 'SELECTED';
+                const isRecommended = idx === 1 || offers.length === 1;
 
                 return (
                   <div
                     key={offer.id}
-                    className={`rounded-2xl border transition-all flex flex-col justify-between p-5 relative ${isSelected
-                        ? 'bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500 shadow-xl shadow-emerald-950/50'
-                        : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                      }`}
+                    className={`rounded-2xl p-5 sm:p-6 transition-all flex flex-col justify-between border ${
+                      isSelected
+                        ? 'bg-[#F9F3EE] border-[#B5652D] ring-2 ring-[#B5652D]/20 shadow-md'
+                        : isRecommended
+                        ? 'bg-white border-[#B5652D]/50 shadow-sm'
+                        : 'bg-white border-[#E5E2DC] hover:border-[#D4D0C7]'
+                    }`}
                   >
-                    {/* Selected Badge */}
-                    {isSelected && (
-                      <span className="absolute -top-3 left-4 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500 text-white shadow-md flex items-center gap-1">
-                        <span>✓</span> Selected Offer
-                      </span>
-                    )}
-
-                    <div className="space-y-4 pt-1">
-                      <div>
-                        <span className="text-xs text-slate-400 font-medium">
-                          {idx === 0
-                            ? 'Standard Plan'
-                            : idx === 1
-                              ? 'Low Monthly EMI'
-                              : 'Fast Payoff Plan'}
+                    <div className="space-y-4">
+                      {/* Badge / Header */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#14161A] uppercase tracking-wider">
+                          Plan {idx + 1}
                         </span>
-                        <div className="mt-1">
-                          <span className="text-2xl font-black text-white font-mono">
-                            ₹{term ? Number(term.emi).toLocaleString('en-IN') : '0'}
+                        {isRecommended && !isSelected && (
+                          <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] bg-[#F9F3EE] border border-[#ECCBB3] px-2.5 py-0.5 rounded-full">
+                            Recommended
                           </span>
-                          <span className="text-xs text-slate-400"> / month</span>
-                        </div>
+                        )}
+                        {isSelected && (
+                          <span className="text-xs font-bold uppercase tracking-wider text-[#1E5C4A] bg-[#E8F2EE] border border-[#C5E0D5] px-2.5 py-0.5 rounded-full">
+                            ✓ Selected
+                          </span>
+                        )}
                       </div>
 
-                      <div className="space-y-2 border-t border-slate-800 pt-3 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Loan Amount:</span>
-                          <span className="font-semibold text-white font-mono">
-                            ₹{Number(offer.principal).toLocaleString('en-IN')}
-                          </span>
-                        </div>
+                      {/* Primary EMI metric */}
+                      <div>
+                        <span className="text-xs text-[#686D76] uppercase font-semibold block">Monthly EMI</span>
+                        <span className="text-3xl font-black text-[#14161A] font-mono mt-1 block">
+                          ₹{term ? Number(term.emi).toLocaleString('en-IN') : '0'}
+                        </span>
+                      </div>
 
+                      {/* Term Metrics */}
+                      <div className="space-y-2 text-sm border-t border-[#E5E2DC] pt-3 text-[#686D76]">
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Interest Rate:</span>
-                          <span className="font-semibold text-emerald-400 font-mono">
-                            {Number(offer.interest_rate).toFixed(2)}% p.a.
-                          </span>
+                          <span>Tenure:</span>
+                          <strong className="text-[#14161A]">{term ? `${term.tenure_months} Months` : 'N/A'}</strong>
                         </div>
-
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Tenure:</span>
-                          <span className="font-semibold text-white">
-                            {term ? `${term.tenure_months} Months` : 'N/A'}
-                          </span>
+                          <span>Interest Rate:</span>
+                          <strong className="text-[#14161A] font-mono">{Number(offer.interest_rate).toFixed(2)}% p.a.</strong>
                         </div>
-
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Total Interest:</span>
-                          <span className="font-semibold text-slate-300 font-mono">
-                            ₹{term ? Number(term.total_interest).toLocaleString('en-IN') : '0'}
-                          </span>
+                          <span>Net Payout:</span>
+                          <strong className="text-[#1E5C4A] font-mono">₹{term ? Number(term.net_disbursement).toLocaleString('en-IN') : '0'}</strong>
                         </div>
-
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Processing Fee + GST:</span>
-                          <span className="font-semibold text-slate-300 font-mono">
-                            ₹{term ? Number(term.total_charges).toLocaleString('en-IN') : '0'}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between border-t border-slate-800/80 pt-2 font-medium">
-                          <span className="text-slate-400">Net Disbursement:</span>
-                          <span className="text-emerald-300 font-mono">
-                            ₹{term ? Number(term.net_disbursement).toLocaleString('en-IN') : '0'}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Total Repayment:</span>
-                          <span className="text-white font-mono font-bold">
-                            ₹{term ? Number(term.total_repayment).toLocaleString('en-IN') : '0'}
-                          </span>
+                          <span>Total Repayment:</span>
+                          <strong className="text-[#14161A] font-mono">₹{term ? Number(term.total_repayment).toLocaleString('en-IN') : '0'}</strong>
                         </div>
                       </div>
                     </div>
 
-                    <div className="pt-5 mt-2 border-t border-slate-800">
-                      <button
-                        type="button"
+                    <div className="pt-5 mt-4 border-t border-[#E5E2DC]">
+                      <Button
+                        variant={isSelected ? 'secondary' : 'primary'}
+                        size="md"
+                        className="w-full"
+                        disabled={isSelected || selectingOfferId !== null || isApprovedOrBeyond}
+                        isLoading={selectingOfferId === offer.id}
                         onClick={() => handleSelectOffer(offer.id)}
-                        disabled={isSelected || selectingOfferId !== null}
-                        className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all ${isSelected
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 cursor-default'
-                            : 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow-md'
-                          } disabled:opacity-70`}
                       >
-                        {selectingOfferId === offer.id
-                          ? 'Selecting…'
-                          : isSelected
-                            ? '✓ Plan Confirmed'
-                            : 'Select This Offer'}
-                      </button>
+                        {isSelected ? '✓ Plan Confirmed' : 'Select This Plan →'}
+                      </Button>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </Card>
         )}
 
-        {/* Phase 5: Verification Pipeline Wizard */}
-        {application && (application.status === 'OFFER_SELECTED' || application.status === 'UNDER_REVIEW') && (
+        {/* 4. VERIFICATION PIPELINE (When Offer Selected and verifying) */}
+        {application && application.status === 'OFFER_SELECTED' && (
           <VerificationWizard
             applicationId={application.id}
             onVerificationComplete={async () => {
@@ -610,345 +593,436 @@ export const LoanApplicationForm: React.FC = () => {
           />
         )}
 
-        {/* Phase 7: Loan Disbursement & Settlement Section */}
-        {application && (application.status === 'APPROVED' || application.status === 'DISBURSEMENT_PROCESSING' || application.status === 'DISBURSED') && disbursement && (
-          <div className="bg-gradient-to-br from-slate-900 via-indigo-950/30 to-slate-900 border border-blue-800/80 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                  Phase 7 • Loan Disbursement & Settlement
+        {/* 5. CUSTOMER LOAN REVIEW DOSSIER (When Under Review, Approved, or Disbursed) */}
+        {isUnderReviewOrBeyond && application && (
+          <div className="space-y-6">
+            {/* Section A: YOUR SELECTED LOAN (Requirement 4) */}
+            <Card variant="elevated" padding="lg" className="border-l-4 border-l-[#B5652D] bg-white space-y-5">
+              <div className="border-b border-[#E5E2DC] pb-4">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                  Confirmed Repayment Plan
                 </span>
-                <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-3">
-                  <span>⚡ Payout Terms & Execution Summary</span>
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
+                  YOUR SELECTED LOAN
                 </h2>
-                <p className="text-xs text-slate-300 mt-1">
-                  Application approved on <strong className="text-white">{disbursement.approval_date ? new Date(disbursement.approval_date).toLocaleDateString('en-IN') : 'N/A'}</strong> by underwriter {disbursement.reviewed_by || 'Credit Officer'}.
+                <p className="text-sm text-[#686D76] mt-0.5">
+                  The terms and monthly commitment confirmed for this personal loan.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wider uppercase border shadow-lg ${
-                    disbursement.disbursement_status === 'SUCCESS' || application.status === 'DISBURSED'
-                      ? 'bg-teal-950/80 border-teal-500 text-teal-300'
-                      : application.status === 'DISBURSEMENT_PROCESSING'
-                      ? 'bg-blue-950/80 border-blue-500 text-blue-300 animate-pulse'
-                      : 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
-                  }`}
-                >
-                  {application.status === 'DISBURSED' ? '✓ DISBURSED' : application.status}
-                </span>
-              </div>
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="p-4 bg-[#F9F3EE] rounded-xl border border-[#ECCBB3] md:col-span-2">
+                  <span className="text-xs text-[#9C4F1C] font-semibold uppercase block">Monthly EMI</span>
+                  <span className="font-mono font-bold text-3xl text-[#14161A] block mt-1">
+                    {disbursement?.emi
+                      ? `₹${Number(disbursement.emi).toLocaleString('en-IN')}`
+                      : selectedTerm
+                      ? `₹${Number(selectedTerm.emi).toLocaleString('en-IN')}`
+                      : 'Calculated'}
+                  </span>
+                  <span className="text-xs text-[#686D76] mt-1 block">Fixed monthly repayment</span>
+                </div>
 
-            {/* Key Payout Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Approved Loan</span>
-                <span className="font-mono font-black text-white text-base mt-1 block">
-                  ₹{Number(disbursement.approved_amount).toLocaleString('en-IN')}
-                </span>
-              </div>
+                <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                  <span className="text-xs text-[#686D76] font-semibold uppercase block">Loan Amount</span>
+                  <span className="font-mono font-bold text-xl text-[#14161A] block mt-1">
+                    ₹{Number(application.requested_amount || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
 
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Net Payout to Bank</span>
-                <span className="font-mono font-black text-emerald-400 text-base mt-1 block">
-                  ₹{Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')}
-                </span>
-              </div>
+                <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                  <span className="text-xs text-[#686D76] font-semibold uppercase block">Repayment Period</span>
+                  <span className="font-bold text-lg text-[#14161A] block mt-1">
+                    {disbursement?.tenure_months || selectedTerm?.tenure_months || application.requested_tenure_months || 36} Months
+                  </span>
+                </div>
 
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Monthly EMI</span>
-                <span className="font-mono font-black text-teal-300 text-base mt-1 block">
-                  ₹{disbursement.emi ? Number(disbursement.emi).toLocaleString('en-IN') : 'N/A'}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Tenure & Interest</span>
-                <span className="font-mono font-bold text-white text-sm mt-1 block">
-                  {disbursement.tenure_months}M @ {Number(disbursement.interest_rate).toFixed(2)}%
-                </span>
-              </div>
-            </div>
-
-            {/* Destination Bank & Settlement Reference Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2">
-              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-                <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] block text-blue-400">
-                  🏦 Destination Bank Account
-                </span>
-                <div className="space-y-1 text-slate-300 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Bank Name:</span>
-                    <span className="font-semibold text-white">{disbursement.destination_bank_name || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Account Number:</span>
-                    <span className="font-mono font-semibold text-white">*******{disbursement.destination_account_last4 || '****'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">IFSC Code:</span>
-                    <span className="font-mono font-semibold text-slate-300">{disbursement.destination_ifsc || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Account Holder:</span>
-                    <span className="font-semibold text-white">{disbursement.account_holder_name || 'Verified Applicant'}</span>
-                  </div>
+                <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                  <span className="text-xs text-[#686D76] font-semibold uppercase block">Interest Rate</span>
+                  <span className="font-mono font-bold text-lg text-[#14161A] block mt-1">
+                    {disbursement?.interest_rate
+                      ? `${Number(disbursement.interest_rate).toFixed(2)}% p.a.`
+                      : selectedOffer
+                      ? `${Number(selectedOffer.interest_rate).toFixed(2)}% p.a.`
+                      : '12.00% p.a.'}
+                  </span>
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-                <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] block text-teal-400">
-                  📑 Transaction & Settlement Record
+              <div className="p-4 bg-[#E8F2EE] rounded-xl border border-[#C5E0D5] flex items-center justify-between text-sm">
+                <span className="font-semibold text-[#1E5C4A]">Amount you&apos;ll receive in bank:</span>
+                <span className="font-mono font-bold text-lg text-[#1E5C4A]">
+                  ₹{disbursement?.net_disbursement_amount
+                    ? Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')
+                    : selectedTerm
+                    ? Number(selectedTerm.net_disbursement).toLocaleString('en-IN')
+                    : Number(application.requested_amount || 0).toLocaleString('en-IN')}
                 </span>
-                <div className="space-y-1 text-slate-300 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Disbursement Reference:</span>
-                    <span className="font-mono font-bold text-emerald-400">
-                      {disbursement.disbursement_reference || 'Pending Payout Generation'}
-                    </span>
+              </div>
+            </Card>
+
+            {/* Section B: YOUR LOAN DETAILS (Requirement 3) */}
+            <Card variant="default" padding="lg" className="bg-white space-y-4">
+              <div className="border-b border-[#E5E2DC] pb-4">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#686D76]">
+                  Borrower Summary
+                </span>
+                <h3 className="text-xl sm:text-2xl font-bold text-[#14161A] font-editorial mt-1">
+                  YOUR LOAN DETAILS
+                </h3>
+                <p className="text-sm text-[#686D76] mt-0.5">
+                  Here&apos;s a summary of the information you provided.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-xs text-[#686D76] block">Loan amount</span>
+                  <strong className="text-[#14161A] font-mono text-base block mt-0.5">
+                    ₹{Number(application.requested_amount || 0).toLocaleString('en-IN')}
+                  </strong>
+                </div>
+
+                <div>
+                  <span className="text-xs text-[#686D76] block">Monthly income</span>
+                  <strong className="text-[#14161A] font-mono text-base block mt-0.5">
+                    ₹{Number(application.monthly_income || 0).toLocaleString('en-IN')}
+                  </strong>
+                </div>
+
+                <div>
+                  <span className="text-xs text-[#686D76] block">Existing monthly commitments</span>
+                  <strong className="text-[#14161A] font-mono text-base block mt-0.5">
+                    ₹{Number(application.existing_debt || 0).toLocaleString('en-IN')}
+                  </strong>
+                </div>
+
+                <div>
+                  <span className="text-xs text-[#686D76] block">Employment</span>
+                  <strong className="text-[#14161A] block mt-0.5">
+                    {application.employment_type === 'SALARIED'
+                      ? 'Salaried Professional'
+                      : application.employment_type === 'SELF_EMPLOYED'
+                      ? 'Self-Employed'
+                      : application.employment_type || 'Professional'}
+                  </strong>
+                </div>
+
+                <div>
+                  <span className="text-xs text-[#686D76] block">Employer</span>
+                  <strong className="text-[#14161A] block mt-0.5">{application.employer_name || 'N/A'}</strong>
+                </div>
+
+                <div>
+                  <span className="text-xs text-[#686D76] block">Loan purpose</span>
+                  <strong className="text-[#14161A] block mt-0.5">{application.purpose || 'Personal needs'}</strong>
+                </div>
+              </div>
+            </Card>
+
+            {/* Section C: YOUR VERIFICATION & APPLICATION UPDATES (Requirements 1 & 2) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* YOUR VERIFICATION (Requirement 2) */}
+              <Card variant="default" padding="lg" className="bg-white space-y-4">
+                <div className="border-b border-[#E5E2DC] pb-3">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
+                    Completed Checks
+                  </span>
+                  <h3 className="text-lg sm:text-xl font-bold text-[#14161A] font-editorial mt-1">
+                    YOUR VERIFICATION
+                  </h3>
+                  <p className="text-xs text-[#686D76] mt-0.5">
+                    All required checks have been completed.
+                  </p>
+                </div>
+
+                <div className="space-y-2.5 text-sm">
+                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                    <span className="font-semibold text-[#14161A]">Identity verified</span>
+                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Deductions (Fee + GST):</span>
-                    <span className="font-mono text-slate-300">
-                      ₹{((disbursement.processing_fee || 0) + (disbursement.gst || 0)).toLocaleString('en-IN')}
-                    </span>
+
+                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                    <span className="font-semibold text-[#14161A]">Bank account verified</span>
+                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Total Repayment:</span>
-                    <span className="font-mono font-bold text-white">
-                      ₹{disbursement.total_repayment ? Number(disbursement.total_repayment).toLocaleString('en-IN') : 'N/A'}
-                    </span>
+
+                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                    <span className="font-semibold text-[#14161A]">Photo verification completed</span>
+                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
                   </div>
-                  {disbursement.completed_at && (
-                    <div className="flex justify-between text-emerald-400 font-semibold border-t border-slate-800/80 pt-1 mt-1">
-                      <span>Settled Timestamp:</span>
-                      <span>{new Date(disbursement.completed_at).toLocaleString('en-IN')}</span>
+
+                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
+                    <span className="font-semibold text-[#14161A]">Declaration accepted</span>
+                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* APPLICATION UPDATES (Requirement 1 - Replaces Technical Audit Trail) */}
+              <Card variant="default" padding="lg" className="bg-white space-y-4">
+                <div className="border-b border-[#E5E2DC] pb-3">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                    Journey Milestones
+                  </span>
+                  <h3 className="text-lg sm:text-xl font-bold text-[#14161A] font-editorial mt-1">
+                    Application updates
+                  </h3>
+                  <p className="text-xs text-[#686D76] mt-0.5">
+                    Live record of your loan progress.
+                  </p>
+                </div>
+
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                    <div>
+                      <strong className="text-[#14161A] block">Application submitted</strong>
+                      <span className="text-xs text-[#686D76]">Your loan intake details were received.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                    <div>
+                      <strong className="text-[#14161A] block">Eligibility confirmed</strong>
+                      <span className="text-xs text-[#686D76]">Borrowing limit evaluated and approved.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                    <div>
+                      <strong className="text-[#14161A] block">Offer selected</strong>
+                      <span className="text-xs text-[#686D76]">Repayment tenure and monthly EMI locked.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                    <div>
+                      <strong className="text-[#14161A] block">Verification completed</strong>
+                      <span className="text-xs text-[#686D76]">Identity and bank account verified.</span>
+                    </div>
+                  </div>
+
+                  {isApprovedOrBeyond && (
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                      <div>
+                        <strong className="text-[#14161A] block">Loan approved</strong>
+                        <span className="text-xs text-[#686D76]">Credit officer authorized fund payout.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {(application.status === 'DISBURSEMENT_PROCESSING' || application.status === 'DISBURSED') && (
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                      <div>
+                        <strong className="text-[#14161A] block">Disbursement initiated</strong>
+                        <span className="text-xs text-[#686D76]">Electronic transfer sent to your bank.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {application.status === 'DISBURSED' && (
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
+                      <div>
+                        <strong className="text-[#1E5C4A] block">Funds transferred to bank</strong>
+                        <span className="text-xs text-[#686D76]">Settlement completed successfully.</span>
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
+              </Card>
             </div>
           </div>
         )}
 
-        {/* Loan Application Details Form Card */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm">
-          <div className="border-b border-slate-800 pb-5 mb-6">
-            <h1 className="text-2xl font-bold text-white">
-              {isSubmittedOrHigher ? 'Application Summary' : 'Personal Loan Details'}
-            </h1>
-            <p className="text-slate-400 text-sm mt-1">
-              {isSubmittedOrHigher
-                ? 'Your loan application parameters are locked and recorded.'
-                : 'Provide your loan requirement and financial background. You can save your draft at any time.'}
-            </p>
-          </div>
+        {/* 6. LOAN APPLICATION GUIDED FORM (When still Draft or Submitted) */}
+        {(!application || application.status === 'DRAFT' || application.status === 'SUBMITTED') && (
+          <Card variant="default" padding="lg" className="space-y-6 bg-white">
+            <div className="border-b border-[#E5E2DC] pb-4">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                Guided Application
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
+                {isSubmittedOrHigher ? 'Application Summary' : 'Personal Loan Details'}
+              </h1>
+              <p className="text-sm text-[#686D76] mt-0.5">
+                {isSubmittedOrHigher
+                  ? 'Your application details have been submitted. Run eligibility evaluation below.'
+                  : 'Answer these three simple questions to receive instant loan eligibility.'}
+              </p>
+            </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Section 1: Loan Requirement */}
-            <div>
-              <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4">
-                1. Loan Requirement
-              </h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Theme 1: Loan Requirement */}
+              <div className="space-y-4">
+                <h2 className="text-sm font-bold text-[#14161A] uppercase tracking-wider border-b border-[#E5E2DC] pb-2">
+                  1. How much would you like to borrow?
+                </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Requested Amount (₹) <span className="text-red-400">*</span>
-                  </label>
-                  <input
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input
+                    label="Requested Amount (₹)"
                     type="number"
-                    min="10000"
-                    max="5000000"
-                    step="1000"
-                    disabled={isSubmittedOrHigher}
                     required
+                    min={10000}
+                    max={5000000}
                     value={requestedAmount}
                     onChange={(e) => setRequestedAmount(e.target.value)}
                     placeholder="e.g. 500000"
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Requested Tenure <span className="text-red-400">*</span>
-                  </label>
-                  <select
+                    hint="₹10,000 to ₹50,00,000"
                     disabled={isSubmittedOrHigher}
+                  />
+
+                  <Select
+                    label="Preferred Tenure"
+                    options={TENURE_OPTIONS.map((t) => ({ value: t, label: `${t} Months (${t / 12} Years)` }))}
                     value={requestedTenureMonths}
                     onChange={(e) => setRequestedTenureMonths(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  >
-                    {TENURE_OPTIONS.map((t) => (
-                      <option key={t} value={t}>
-                        {t} Months ({t / 12 >= 1 ? `${t / 12} ${t / 12 === 1 ? 'Year' : 'Years'}` : ''})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Purpose of Loan <span className="text-red-400">*</span>
-                  </label>
-                  <select
+                    hint="Repayment duration"
                     disabled={isSubmittedOrHigher}
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  >
-                    {PURPOSE_OPTIONS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-
-                  {purpose === 'Other personal needs' && (
-                    <input
-                      type="text"
-                      disabled={isSubmittedOrHigher}
-                      value={customPurpose}
-                      onChange={(e) => setCustomPurpose(e.target.value)}
-                      placeholder="Please specify your loan purpose"
-                      className="mt-2 w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-sm"
-                    />
-                  )}
+                  />
                 </div>
+
+                <Select
+                  label="What will you use the loan for?"
+                  options={PURPOSE_OPTIONS.map((p) => ({ value: p, label: p }))}
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  disabled={isSubmittedOrHigher}
+                />
+
+                {purpose === 'Other personal needs' && (
+                  <Input
+                    label="Specify Loan Purpose"
+                    value={customPurpose}
+                    onChange={(e) => setCustomPurpose(e.target.value)}
+                    placeholder="Briefly describe what you'll use the loan for"
+                    disabled={isSubmittedOrHigher}
+                  />
+                )}
               </div>
-            </div>
 
-            {/* Section 2: Financial & Employment Profile */}
-            <div className="pt-4 border-t border-slate-800">
-              <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4">
-                2. Employment & Income Details
-              </h2>
+              {/* Theme 2: Income & Employment */}
+              <div className="space-y-4">
+                <h2 className="text-sm font-bold text-[#14161A] uppercase tracking-wider border-b border-[#E5E2DC] pb-2">
+                  2. Income & Employment Details
+                </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Employment Type <span className="text-red-400">*</span>
-                  </label>
-                  <select
-                    disabled={isSubmittedOrHigher}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Select
+                    label="Employment Type"
+                    options={EMPLOYMENT_OPTIONS}
                     value={employmentType}
                     onChange={(e) => setEmploymentType(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  >
-                    {EMPLOYMENT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Gross Monthly Income (₹) <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="5000"
-                    step="500"
                     disabled={isSubmittedOrHigher}
+                  />
+
+                  <Input
+                    label="What's your net monthly income? (₹)"
+                    type="number"
                     required
+                    min={5000}
                     value={monthlyIncome}
                     onChange={(e) => setMonthlyIncome(e.target.value)}
-                    placeholder="e.g. 60000"
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                    placeholder="e.g. 75000"
+                    hint="After-tax take home"
+                    disabled={isSubmittedOrHigher}
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Employer / Business Name
-                  </label>
-                  <input
-                    type="text"
-                    disabled={isSubmittedOrHigher}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input
+                    label="Where do you work?"
                     value={employerName}
                     onChange={(e) => setEmployerName(e.target.value)}
-                    placeholder="e.g. Example Technologies"
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Designation / Role
-                  </label>
-                  <input
-                    type="text"
+                    placeholder="Company or practice name"
+                    hint="Used to verify income stability"
                     disabled={isSubmittedOrHigher}
+                  />
+
+                  <Input
+                    label="Designation / Role"
                     value={designation}
                     onChange={(e) => setDesignation(e.target.value)}
-                    placeholder="e.g. Senior Software Engineer"
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Existing Monthly Debt / EMIs (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="500"
+                    placeholder="e.g. Software Engineer"
                     disabled={isSubmittedOrHigher}
-                    value={existingDebt}
-                    onChange={(e) => setExistingDebt(e.target.value)}
-                    placeholder="e.g. 10000"
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                   />
-                  <span className="text-xs text-slate-500 mt-1 block">
-                    Include active credit cards, personal loans, or vehicle loan EMIs.
-                  </span>
                 </div>
               </div>
-            </div>
 
-            {/* Actions */}
-            <div className="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <Link
-                to="/dashboard"
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-sm font-medium text-center transition-all"
-              >
-                Back to Dashboard
-              </Link>
+              {/* Theme 3: Existing Obligations */}
+              <div className="space-y-4">
+                <h2 className="text-sm font-bold text-[#14161A] uppercase tracking-wider border-b border-[#E5E2DC] pb-2">
+                  3. What do you currently pay toward other loans?
+                </h2>
 
+                <Input
+                  label="Total Existing Monthly EMIs (₹)"
+                  type="number"
+                  min={0}
+                  value={existingDebt}
+                  onChange={(e) => setExistingDebt(e.target.value)}
+                  placeholder="0 if none"
+                  hint="Used to calculate your safe debt-to-income (DTI) ratio"
+                  disabled={isSubmittedOrHigher}
+                />
+              </div>
+
+              {/* Form Action Controls */}
               {!isSubmittedOrHigher ? (
-                <div className="w-full sm:w-auto flex items-center space-x-3">
-                  <button
-                    type="button"
-                    onClick={handleSaveDraft}
-                    disabled={saving || submitting}
-                    className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl border border-slate-700 text-slate-200 hover:bg-slate-800 text-sm font-semibold transition-all disabled:opacity-50"
-                  >
-                    {saving ? 'Saving Draft…' : 'Save Draft'}
-                  </button>
+                <div className="pt-4 border-t border-[#E5E2DC] flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <span className="text-sm text-[#686D76]">
+                    You can pause here — your draft is safely saved.
+                  </span>
 
-                  <button
-                    type="submit"
-                    disabled={saving || submitting}
-                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-sm font-bold shadow-lg shadow-emerald-950/50 transition-all disabled:opacity-50"
-                  >
-                    {submitting ? 'Submitting…' : 'Submit Application'}
-                  </button>
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="md"
+                      className="flex-1 sm:flex-none"
+                      isLoading={saving}
+                      onClick={handleSaveDraft}
+                    >
+                      Save Draft
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="md"
+                      className="flex-1 sm:flex-none"
+                      isLoading={submitting}
+                    >
+                      Submit Loan Application →
+                    </Button>
+                  </div>
                 </div>
-              ) : (
-                <span className="text-xs text-blue-400 font-medium">
-                  ✓ Application details locked in {application.status} state.
-                </span>
-              )}
-            </div>
-          </form>
-        </div>
-      </div>
+              ) : application?.status === 'SUBMITTED' ? (
+                <div className="pt-4 border-t border-[#E5E2DC] flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <span className="text-sm text-[#686D76]">
+                    Application submitted. Assess your borrowing capacity now.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    isLoading={evaluating}
+                    onClick={handleCheckEligibility}
+                  >
+                    Check Loan Eligibility →
+                  </Button>
+                </div>
+              ) : null}
+            </form>
+          </Card>
+        )}
+      </main>
     </div>
   );
 };

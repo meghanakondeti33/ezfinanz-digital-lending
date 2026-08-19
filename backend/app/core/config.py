@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID: str = Field(
+        default="",
+        description="Google OAuth 2.0 Web Client ID",
+    )
+
     # CORS
     CORS_ORIGINS: str = Field(
         default="http://localhost:5173",
