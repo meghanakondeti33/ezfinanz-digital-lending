@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import apiClient from '../lib/api-client';
 import { fetchApplications } from '../lib/loans-api';
 import type { LoanApplication } from '../types/loan';
+import { extractErrorMessage } from '../lib/error-utils';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -33,7 +34,7 @@ export const Dashboard: React.FC = () => {
       const data = await fetchApplications();
       setApplications(data.items);
     } catch (err: any) {
-      setAppsError(err.message || 'Failed to load loan applications.');
+      setAppsError(extractErrorMessage(err, 'Failed to load loan applications.'));
     } finally {
       setAppsLoading(false);
     }
@@ -143,6 +144,23 @@ export const Dashboard: React.FC = () => {
                 </span>
               </div>
             </div>
+
+            {/* Admin Portal Navigation Banner */}
+            {user?.role === 'ADMIN' && (
+              <div className="mt-6 pt-6 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-indigo-950/30 p-4 rounded-xl border border-indigo-900/60">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block">Credit Officer Access</span>
+                  <span className="text-sm font-semibold text-white">Underwriting & Application Review Queue</span>
+                  <p className="text-xs text-slate-400 mt-0.5">Review customer verification documents, credit scoring, and submit approval/rejection decisions.</p>
+                </div>
+                <Link
+                  to="/admin"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all text-center whitespace-nowrap"
+                >
+                  Open Underwriting Portal →
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* Section: My Applications (Customer Role) */}
@@ -195,6 +213,26 @@ export const Dashboard: React.FC = () => {
                 <div className="mt-6 space-y-4">
                   {applications.map((app) => {
                     const isDraft = app.status === 'DRAFT';
+                    const isDisbursed = app.status === 'DISBURSED';
+                    const isProcessing = app.status === 'DISBURSEMENT_PROCESSING';
+                    const isApproved = app.status === 'APPROVED';
+                    const isRejected = app.status === 'REJECTED';
+                    const isUnderReview = app.status === 'UNDER_REVIEW';
+
+                    const badgeClass = isDisbursed
+                      ? 'bg-teal-950/60 border-teal-600 text-teal-300 font-bold'
+                      : isProcessing
+                      ? 'bg-blue-950/60 border-blue-600 text-blue-300 animate-pulse'
+                      : isApproved
+                      ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
+                      : isRejected
+                      ? 'bg-rose-950/60 border-rose-700 text-rose-300'
+                      : isUnderReview
+                      ? 'bg-amber-950/60 border-amber-700 text-amber-300 animate-pulse'
+                      : isDraft
+                      ? 'bg-yellow-950/60 border-yellow-800 text-yellow-300'
+                      : 'bg-blue-950/60 border-blue-800 text-blue-300';
+
                     return (
                       <div
                         key={app.id}
@@ -206,11 +244,7 @@ export const Dashboard: React.FC = () => {
                               {app.application_number}
                             </span>
                             <span
-                              className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                                isDraft
-                                  ? 'bg-yellow-950 text-yellow-300 border border-yellow-800/80'
-                                  : 'bg-blue-950 text-blue-300 border border-blue-800/80'
-                              }`}
+                              className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${badgeClass}`}
                             >
                               {app.status}
                             </span>

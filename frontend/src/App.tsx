@@ -4,6 +4,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import LoanApplicationForm from './pages/LoanApplicationForm';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AdminApplicationReview } from './pages/admin/AdminApplicationReview';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 
@@ -35,6 +37,24 @@ function App() {
           element={
             <ProtectedRoute>
               <LoanApplicationForm />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin Underwriting Routes */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/applications/:id"
+          element={
+            <ProtectedRoute requiredRole="ADMIN">
+              <AdminApplicationReview />
             </ProtectedRoute>
           }
         />

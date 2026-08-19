@@ -157,11 +157,16 @@ EZFINANZ/
 | `POST` | `/api/v1/loans/applications/{id}/declaration` | Customer | Accept loan declaration terms (records IP & timestamp) |
 | `GET` | `/api/v1/loans/applications/{id}/declaration` | Customer | Retrieve declaration status |
 | `GET` | `/api/v1/loans/applications/{id}/verification` | Customer | Consolidated verification progress summary |
+| `GET` | `/api/v1/admin/dashboard/stats` | Admin | Underwriting KPI counts (Awaiting Review, Approved, Rejected, Total) |
+| `GET` | `/api/v1/admin/applications` | Admin | Application queue with filtering by status and customer search |
+| `GET` | `/api/v1/admin/applications/{id}` | Admin | Full composite underwriter profile & audit trail |
+| `POST` | `/api/v1/admin/applications/{id}/decision` | Admin | Submit APPROVE or REJECT underwriting decision |
 
 ---
 
 ## Manual Demo Flow
 
+### Customer Journey (Application & Verification)
 1. Register or login as a customer (`/register` or `/login`).
 2. Open Dashboard (`/dashboard`) and click **"Apply for Personal Loan"**.
 3. Fill in loan parameters (Amount: `₹5,00,000`, Income: `₹60,000`, Debt: `₹10,000`, Tenure: `36 Months`).
@@ -179,11 +184,26 @@ EZFINANZ/
    - **Step 2 (Bank Account)**: Submit banking details -> Verified with masked account (`XXXXXX1234`).
    - **Step 3 (Live Selfie)**: Submit simulated liveness photo -> Verified.
    - **Step 4 (Declaration)**: Check "I agree" and accept legal declaration terms -> Timestamp recorded.
-9. Verification status reaches `COMPLETED` and application transitions to `UNDER_REVIEW` (ready for admin review).
-10. Refresh browser -> All verification steps and application status persist from PostgreSQL.
+9. Verification reaches `COMPLETED` and application transitions to `UNDER_REVIEW`.
+
+### Admin Journey (Underwriting & Decisioning)
+10. Login with an admin account (`admin@ezfinanz.com`).
+11. Navigate to the **Underwriting Portal** (`/admin`):
+    - Review dashboard KPI counts (Awaiting Review, Approved, Rejected, Total).
+    - Filter by status (`UNDER_REVIEW`) or search for customer email.
+12. Click **"Review →"** on the customer application:
+    - Review Customer Profile & Income parameters.
+    - Inspect Deterministic Eligibility Score and Explainability Criteria.
+    - Review Selected Loan Offer Amortization & Repayment schedule.
+    - Check verified KYC, Bank Account, Selfie, and Declaration status.
+    - Inspect complete Audit History Timeline.
+13. Click **"Approve Application"** -> Confirm modal with underwriter notes -> Application permanently transitions to `APPROVED`.
+14. Log back in as customer -> Customer dashboard and loan application page display `APPROVED` status with celebration banner.
+15. Verify with a separate application that **"Reject Application"** requires a mandatory rejection category (e.g. *Risk policy violation*) and permanently transitions state to `REJECTED`.
 
 ---
 
 ## Documentation
 
 - [Architecture Document](docs/architecture.md) — Comprehensive technical specification, ER diagram, Argon2id & JWT architecture, RBAC model, state machine, underwriting rules, and financial calculation formulas.
+

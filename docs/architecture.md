@@ -323,3 +323,45 @@ Key verification milestones dispatch structured records into the `audit_logs` ta
 | `GET` | `/api/v1/loans/applications/{id}/declaration` | Customer | Retrieve declaration status |
 | `GET` | `/api/v1/loans/applications/{id}/verification` | Customer | Retrieve consolidated verification summary |
 
+---
+
+## 14. Admin Underwriting & Application Review (Phase 6)
+
+### 14.1 Authorization & Role Protection
+- **Role-Based Access Control**: All admin endpoints strictly enforce `require_role(UserRole.ADMIN)`. Customers attempting to access admin APIs receive `HTTP 403 Forbidden`.
+- **Frontend Route Protection**: `/admin` and `/admin/applications/:id` are protected by `<ProtectedRoute requiredRole="ADMIN">` which redirects non-admin users.
+
+### 14.2 State Machine Transitions & Validation
+The underwriter review workflow operates strictly on applications that have completed customer verification:
+
+```
+[ UNDER_REVIEW ]
+       │
+       ├──► POST /admin/applications/{id}/decision (decision="APPROVED") ──► [ APPROVED ]
+       │
+       └──► POST /admin/applications/{id}/decision (decision="REJECTED") ──► [ REJECTED ]
+```
+
+- Applications in states other than `UNDER_REVIEW` (e.g. `DRAFT`, `SUBMITTED`, `ELIGIBILITY_CHECKED`, `OFFER_SELECTED`, or already `APPROVED`/`REJECTED`) reject decision attempts with `HTTP 409 Conflict`.
+- Rejections strictly require a mandatory `rejection_reason` category (e.g. *Verification issue*, *Income insufficient*, *Risk policy violation*, *Incomplete information*, *Other*), returning `HTTP 422 Unprocessable Entity` if omitted.
+
+### 14.3 Comprehensive Auditability
+Every underwriting decision records:
+1. An entry in `admin_reviews` linked to the reviewing admin (`admin_id`), decision, and remarks.
+2. An immutable structured entry in `audit_logs`:
+   - `action`: `APPLICATION_APPROVED` or `APPLICATION_REJECTED`
+   - `actor_id`: Underwriting admin user ID
+   - `old_status`: `UNDER_REVIEW`
+   - `new_status`: `APPROVED` or `REJECTED`
+   - `metadata`: `{"decision": ..., "rejection_reason": ..., "remarks": ..., "reviewed_by_admin": ...}`
+
+### 14.4 Admin Underwriting API Endpoints
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/admin/dashboard/stats` | Admin | Aggregated application counts for KPI tiles (Awaiting Review, Approved, Rejected, Total) |
+| `GET` | `/api/v1/admin/applications` | Admin | Application review queue with status filtering, customer search, and pagination |
+| `GET` | `/api/v1/admin/applications/{id}` | Admin | Full composite underwriter profile (Customer, Financials, Eligibility, Selected Offer, 4-Step Verification, Audit Trail) |
+| `POST` | `/api/v1/admin/applications/{id}/decision` | Admin | Submit APPROVE or REJECT underwriting decision |
+
+

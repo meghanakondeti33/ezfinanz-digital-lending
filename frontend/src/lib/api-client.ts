@@ -6,6 +6,7 @@
  */
 
 import axios from 'axios';
+import { extractErrorMessage } from './error-utils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -33,22 +34,9 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Normalize error shape for consumers
-    if (error.response) {
-      const message =
-        error.response.data?.error?.message ||
-        error.response.data?.detail ||
-        error.response.statusText ||
-        'An unexpected error occurred';
-
-      return Promise.reject(new Error(message));
-    }
-
-    if (error.request) {
-      return Promise.reject(new Error('Unable to reach the server. Please check your connection.'));
-    }
-
-    return Promise.reject(error);
+    // Normalize error into a clean, human-readable Error instance
+    const message = extractErrorMessage(error);
+    return Promise.reject(new Error(message));
   },
 );
 

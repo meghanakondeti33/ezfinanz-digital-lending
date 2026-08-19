@@ -19,6 +19,7 @@ import {
   submitKYC,
   submitSelfie,
 } from '../../lib/verification-api';
+import { extractErrorMessage } from '../../lib/error-utils';
 
 interface VerificationWizardProps {
   applicationId: string;
@@ -113,7 +114,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         if (onVerificationComplete) onVerificationComplete();
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load verification pipeline state.');
+      setError(extractErrorMessage(err, 'Failed to load verification pipeline state.'));
     } finally {
       setLoading(false);
     }
@@ -137,7 +138,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
       await loadState();
       setActiveStep(2);
     } catch (err: any) {
-      setError(err.message || 'Failed to submit KYC.');
+      setError(extractErrorMessage(err, 'Failed to submit KYC.'));
     } finally {
       setSubmitting(false);
     }
@@ -157,7 +158,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
       await loadState();
       setActiveStep(3);
     } catch (err: any) {
-      setError(err.message || 'Failed to verify bank account.');
+      setError(extractErrorMessage(err, 'Failed to verify bank account.'));
     } finally {
       setSubmitting(false);
     }
@@ -178,7 +179,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
       await loadState();
       setActiveStep(4);
     } catch (err: any) {
-      setError(err.message || 'Selfie verification failed.');
+      setError(extractErrorMessage(err, 'Selfie verification failed.'));
     } finally {
       setSubmitting(false);
     }
@@ -207,7 +208,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
       setActiveStep(5);
       if (onVerificationComplete) onVerificationComplete();
     } catch (err: any) {
-      setError(err.message || 'Failed to accept declaration.');
+      setError(extractErrorMessage(err, 'Failed to accept declaration.'));
     } finally {
       setSubmitting(false);
     }

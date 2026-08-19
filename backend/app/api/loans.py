@@ -20,6 +20,8 @@ from app.schemas.loan import (
     LoanApplicationUpdate,
 )
 from app.schemas.offer import LoanOfferListResponse, LoanOfferResponse
+from app.schemas.disbursement import DisbursementDetailResponse
+from app.services.disbursement_service import get_disbursement_details
 from app.services.eligibility_service import run_and_persist_eligibility
 from app.services.loan_service import (
     create_loan_application,
@@ -194,3 +196,22 @@ def select_offer(
     """
     selected = select_application_offer(db, current_user, application_id, offer_id)
     return LoanOfferResponse.model_validate(selected)
+
+
+@router.get(
+    "/{application_id}/disbursement",
+    response_model=DisbursementDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get approved loan and disbursement details for customer",
+)
+def get_customer_disbursement(
+    application_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+) -> DisbursementDetailResponse:
+    """
+    Retrieve comprehensive post-approval disbursement summary, selected loan terms,
+    destination bank details, and real-time disbursement status.
+    """
+    return get_disbursement_details(db, application_id, current_user)
+

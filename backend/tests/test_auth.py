@@ -394,3 +394,53 @@ def test_admin_account_creation_logic(db_session: Session):
     assert saved_admin.is_active is True
     assert verify_password(password, saved_admin.password_hash) is True
 
+
+def test_provision_admin_user_script_and_login(client: TestClient, db_session: Session):
+    """Verify admin provisioned via script function can log in and access admin resources."""
+    from app.scripts.create_admin import provision_admin_user
+
+    admin_email = "provisioned_admin@ezfinanz.com"
+    admin_phone = "9876599994"
+    admin_pwd = "ProvisionedAdmin@123"
+
+    admin_user = provision_admin_user(db_session, email=admin_email, phone=admin_phone, password=admin_pwd)
+    assert admin_user.role == UserRole.ADMIN
+
+    # Test login via standard /api/v1/auth/login
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={"email": admin_email, "password": admin_pwd},
+    )
+    assert login_res.status_code == 200
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Verify /auth/me returns ADMIN role
+    me_res = client.get("/api/v1/auth/me", headers=headers)
+    assert me_res.status_code == 200
+    assert me_res.json()["role"] == "ADMIN"
+
+    # Verify admin can access admin dashboard stats
+    admin_res = client.get("/api/v1/admin/dashboard/stats", headers=headers)
+    assert admin_res.status_code == 200
+
+
+def test_customer_registration_cannot_specify_or_promote_role(client: TestClient, db_session: Session):
+    """Verify that public registration strictly provisions CUSTOMER role and rejects/ignores role injection."""
+    cust_email = "injected_role_user@ezfinanz.com"
+    cust_payload = {
+        "email": cust_email,
+        "phone": "9876599995",
+        "password": "CustomerPassword@123",
+        "role": "ADMIN",  # Attempted privilege escalation
+    }
+    # If schema forbids extra fields, it returns 422; if schema strips extra fields, it creates CUSTOMER
+    res = client.post("/api/v1/auth/register", json=cust_payload)
+    if res.status_code == 201:
+        # If accepted, verify role was strictly set to CUSTOMER, not ADMIN
+        user = db_session.execute(select(User).where(User.email == cust_email)).scalar_one()
+        assert user.role == UserRole.CUSTOMER
+    else:
+        assert res.status_code == 422
+
+

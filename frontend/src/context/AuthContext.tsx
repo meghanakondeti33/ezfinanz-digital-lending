@@ -17,7 +17,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   register: (email: string, phone: string, password: string) => Promise<void>;
   logout: () => void;
   refetchUser: () => Promise<void>;
@@ -54,7 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User> => {
     setIsLoading(true);
     try {
       const response = await apiClient.post<{ access_token: string }>('/auth/login', {
@@ -69,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { Authorization: `Bearer ${newToken}` },
       });
       setUser(meResponse.data);
+      return meResponse.data;
     } finally {
       setIsLoading(false);
     }

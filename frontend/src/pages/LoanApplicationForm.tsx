@@ -9,13 +9,16 @@ import {
   submitApplication,
   updateDraft,
 } from '../lib/loans-api';
+import { fetchCustomerDisbursement } from '../lib/disbursement-api';
 import type {
   EligibilityCheck,
   LoanApplication,
   LoanApplicationPayload,
   LoanOffer,
 } from '../types/loan';
+import type { DisbursementDetail } from '../types/disbursement';
 import { VerificationWizard } from '../components/verification/VerificationWizard';
+import { extractErrorMessage } from '../lib/error-utils';
 
 const PURPOSE_OPTIONS = [
   'Home renovation',
@@ -46,6 +49,7 @@ export const LoanApplicationForm: React.FC = () => {
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
   const [offers, setOffers] = useState<LoanOffer[]>([]);
+  const [disbursement, setDisbursement] = useState<DisbursementDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(!isNew);
   const [saving, setSaving] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -99,8 +103,22 @@ export const LoanApplicationForm: React.FC = () => {
       if (data.status === 'ELIGIBILITY_CHECKED' || data.status === 'OFFER_SELECTED') {
         loadOffers(appId);
       }
+
+      // If application is approved or in disbursement lifecycle, fetch disbursement details
+      if (
+        data.status === 'APPROVED' ||
+        data.status === 'DISBURSEMENT_PROCESSING' ||
+        data.status === 'DISBURSED'
+      ) {
+        try {
+          const disb = await fetchCustomerDisbursement(appId);
+          setDisbursement(disb);
+        } catch {
+          // Non-critical
+        }
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to load loan application.');
+      setError(extractErrorMessage(err, 'Failed to load loan application.'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +170,7 @@ export const LoanApplicationForm: React.FC = () => {
         setSuccessMessage('Draft saved successfully!');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to save draft.');
+      setError(extractErrorMessage(err, 'Failed to save draft.'));
     } finally {
       setSaving(false);
     }
@@ -183,7 +201,7 @@ export const LoanApplicationForm: React.FC = () => {
       setSuccessMessage('🎉 Application submitted successfully! You can now check loan eligibility.');
       navigate(`/loans/${submitted.id}`, { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Failed to submit application. Please check required fields.');
+      setError(extractErrorMessage(err, 'Failed to submit application. Please check required fields.'));
     } finally {
       setSubmitting(false);
     }
@@ -210,7 +228,7 @@ export const LoanApplicationForm: React.FC = () => {
         setError('Application is ineligible based on underwriting rules. Review the decision details below.');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to evaluate eligibility.');
+      setError(extractErrorMessage(err, 'Failed to evaluate eligibility.'));
     } finally {
       setEvaluating(false);
     }
@@ -231,7 +249,7 @@ export const LoanApplicationForm: React.FC = () => {
       setApplication(updatedApp);
       await loadOffers(application.id);
     } catch (err: any) {
-      setError(err.message || 'Failed to select loan offer.');
+      setError(extractErrorMessage(err, 'Failed to select loan offer.'));
     } finally {
       setSelectingOfferId(null);
     }
@@ -277,34 +295,66 @@ export const LoanApplicationForm: React.FC = () => {
         {/* Status Header Banner */}
         {application && (
           <div
-            className={`p-4 rounded-2xl border flex items-center justify-between ${isOfferSelected
-                ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
+            className={`p-4 rounded-2xl border flex items-center justify-between ${
+              application.status === 'DISBURSED'
+                ? 'bg-teal-950/60 border-teal-600 text-teal-300 shadow-xl shadow-teal-950/40'
+                : application.status === 'DISBURSEMENT_PROCESSING'
+                ? 'bg-blue-950/60 border-blue-700 text-blue-300 shadow-xl shadow-blue-950/40'
+                : application.status === 'APPROVED'
+                ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 shadow-xl shadow-emerald-950/40'
+                : application.status === 'REJECTED'
+                ? 'bg-rose-950/60 border-rose-700 text-rose-300'
+                : application.status === 'UNDER_REVIEW'
+                ? 'bg-amber-950/60 border-amber-700 text-amber-300'
+                : isOfferSelected
+                ? 'bg-blue-950/40 border-blue-800 text-blue-300'
                 : isSubmittedOrHigher
-                  ? 'bg-blue-950/40 border-blue-800 text-blue-300'
-                  : 'bg-yellow-950/30 border-yellow-800/60 text-yellow-300'
-              }`}
+                ? 'bg-blue-950/40 border-blue-800 text-blue-300'
+                : 'bg-yellow-950/30 border-yellow-800/60 text-yellow-300'
+            }`}
           >
             <div className="flex items-center space-x-3">
               <span
-                className={`h-3 w-3 rounded-full ${isOfferSelected
+                className={`h-3 w-3 rounded-full ${
+                  application.status === 'DISBURSED'
+                    ? 'bg-teal-400'
+                    : application.status === 'DISBURSEMENT_PROCESSING'
+                    ? 'bg-blue-400 animate-pulse'
+                    : application.status === 'APPROVED'
                     ? 'bg-emerald-400'
+                    : application.status === 'REJECTED'
+                    ? 'bg-rose-400'
+                    : application.status === 'UNDER_REVIEW'
+                    ? 'bg-amber-400 animate-pulse'
+                    : isOfferSelected
+                    ? 'bg-blue-400'
                     : isSubmittedOrHigher
-                      ? 'bg-blue-400 animate-pulse'
-                      : 'bg-yellow-400'
-                  }`}
+                    ? 'bg-blue-400 animate-pulse'
+                    : 'bg-yellow-400'
+                }`}
               />
               <div>
                 <span className="font-bold text-sm block">
                   Status: {application.status}
                 </span>
-                <span className="text-xs opacity-80">
-                  {isOfferSelected
-                    ? 'Loan offer confirmed. Next phase: verification & disbursement.'
+                <span className="text-xs opacity-90">
+                  {application.status === 'DISBURSED'
+                    ? '🎉 Funds successfully disbursed! Settlement completed to your verified bank account.'
+                    : application.status === 'DISBURSEMENT_PROCESSING'
+                    ? '⚡ Disbursement in progress. Electronic fund transfer has been initiated to your bank account.'
+                    : application.status === 'APPROVED'
+                    ? '🎉 Congratulations! Your loan application has been approved by credit underwriters. Disbursement queue ready.'
+                    : application.status === 'REJECTED'
+                    ? 'Your loan application was declined during underwriting review.'
+                    : application.status === 'UNDER_REVIEW'
+                    ? 'Verification complete. Your application is currently under review by our credit underwriting team.'
+                    : isOfferSelected
+                    ? 'Loan offer confirmed. Please complete the verification pipeline below.'
                     : application.status === 'ELIGIBILITY_CHECKED'
-                      ? 'Eligibility checked. Compare and select your preferred loan offer below.'
-                      : application.status === 'SUBMITTED'
-                        ? 'Application submitted. Click Check Eligibility to proceed.'
-                        : 'Draft application (editable). Click Submit when ready.'}
+                    ? 'Eligibility checked. Compare and select your preferred loan offer below.'
+                    : application.status === 'SUBMITTED'
+                    ? 'Application submitted. Click Check Eligibility to proceed.'
+                    : 'Draft application (editable). Click Submit when ready.'}
                 </span>
               </div>
             </div>
@@ -558,6 +608,129 @@ export const LoanApplicationForm: React.FC = () => {
               setApplication(updated);
             }}
           />
+        )}
+
+        {/* Phase 7: Loan Disbursement & Settlement Section */}
+        {application && (application.status === 'APPROVED' || application.status === 'DISBURSEMENT_PROCESSING' || application.status === 'DISBURSED') && disbursement && (
+          <div className="bg-gradient-to-br from-slate-900 via-indigo-950/30 to-slate-900 border border-blue-800/80 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                  Phase 7 • Loan Disbursement & Settlement
+                </span>
+                <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-3">
+                  <span>⚡ Payout Terms & Execution Summary</span>
+                </h2>
+                <p className="text-xs text-slate-300 mt-1">
+                  Application approved on <strong className="text-white">{disbursement.approval_date ? new Date(disbursement.approval_date).toLocaleDateString('en-IN') : 'N/A'}</strong> by underwriter {disbursement.reviewed_by || 'Credit Officer'}.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wider uppercase border shadow-lg ${
+                    disbursement.disbursement_status === 'SUCCESS' || application.status === 'DISBURSED'
+                      ? 'bg-teal-950/80 border-teal-500 text-teal-300'
+                      : application.status === 'DISBURSEMENT_PROCESSING'
+                      ? 'bg-blue-950/80 border-blue-500 text-blue-300 animate-pulse'
+                      : 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                  }`}
+                >
+                  {application.status === 'DISBURSED' ? '✓ DISBURSED' : application.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Key Payout Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Approved Loan</span>
+                <span className="font-mono font-black text-white text-base mt-1 block">
+                  ₹{Number(disbursement.approved_amount).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Net Payout to Bank</span>
+                <span className="font-mono font-black text-emerald-400 text-base mt-1 block">
+                  ₹{Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Monthly EMI</span>
+                <span className="font-mono font-black text-teal-300 text-base mt-1 block">
+                  ₹{disbursement.emi ? Number(disbursement.emi).toLocaleString('en-IN') : 'N/A'}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 shadow-inner">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Tenure & Interest</span>
+                <span className="font-mono font-bold text-white text-sm mt-1 block">
+                  {disbursement.tenure_months}M @ {Number(disbursement.interest_rate).toFixed(2)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Destination Bank & Settlement Reference Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2">
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] block text-blue-400">
+                  🏦 Destination Bank Account
+                </span>
+                <div className="space-y-1 text-slate-300 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Bank Name:</span>
+                    <span className="font-semibold text-white">{disbursement.destination_bank_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Account Number:</span>
+                    <span className="font-mono font-semibold text-white">*******{disbursement.destination_account_last4 || '****'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">IFSC Code:</span>
+                    <span className="font-mono font-semibold text-slate-300">{disbursement.destination_ifsc || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Account Holder:</span>
+                    <span className="font-semibold text-white">{disbursement.account_holder_name || 'Verified Applicant'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] block text-teal-400">
+                  📑 Transaction & Settlement Record
+                </span>
+                <div className="space-y-1 text-slate-300 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Disbursement Reference:</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      {disbursement.disbursement_reference || 'Pending Payout Generation'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Deductions (Fee + GST):</span>
+                    <span className="font-mono text-slate-300">
+                      ₹{((disbursement.processing_fee || 0) + (disbursement.gst || 0)).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Repayment:</span>
+                    <span className="font-mono font-bold text-white">
+                      ₹{disbursement.total_repayment ? Number(disbursement.total_repayment).toLocaleString('en-IN') : 'N/A'}
+                    </span>
+                  </div>
+                  {disbursement.completed_at && (
+                    <div className="flex justify-between text-emerald-400 font-semibold border-t border-slate-800/80 pt-1 mt-1">
+                      <span>Settled Timestamp:</span>
+                      <span>{new Date(disbursement.completed_at).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Loan Application Details Form Card */}

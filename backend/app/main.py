@@ -14,6 +14,7 @@ from app.api.health import router as health_router
 from app.api.auth import router as auth_router
 from app.api.loans import router as loans_router
 from app.api.verification import router as verification_router
+from app.api.admin import router as admin_api_router
 from app.api.test_rbac import customer_router, admin_router
 
 
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
     app.include_router(loans_router, prefix="/api/v1", tags=["loans"])
     app.include_router(verification_router, prefix="/api/v1", tags=["verification"])
+    app.include_router(admin_api_router, prefix="/api/v1", tags=["admin"])
     app.include_router(customer_router, prefix="/api/v1", tags=["customer-test"])
     app.include_router(admin_router, prefix="/api/v1", tags=["admin-test"])
 

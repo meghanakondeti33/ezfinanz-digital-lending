@@ -48,27 +48,39 @@ function Landing() {
 
           {isAuthenticated ? (
             <div className="space-y-3">
-              <div className="p-3 bg-emerald-950/50 border border-emerald-800/60 rounded-xl text-xs text-emerald-300">
-                Logged in as <span className="font-semibold text-white">{user?.email}</span> ({user?.role})
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs flex items-center justify-between">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Active Session</span>
+                  <span className="font-semibold text-white">{user?.email}</span>
+                </div>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    user?.role === 'ADMIN'
+                      ? 'bg-purple-950 text-purple-300 border border-purple-800'
+                      : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                  }`}
+                >
+                  {user?.role}
+                </span>
               </div>
               <Link
-                to="/dashboard"
-                className="w-full flex justify-center items-center py-2.5 px-4 rounded-xl font-semibold text-sm text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-all shadow-lg"
+                to={user?.role === 'ADMIN' ? '/admin' : '/dashboard'}
+                className="w-full flex justify-center items-center py-2.5 px-4 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all shadow-lg cursor-pointer"
               >
-                Go to Dashboard →
+                {user?.role === 'ADMIN' ? 'Go to Underwriting Portal →' : 'Go to Customer Dashboard →'}
               </Link>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <Link
                 to="/login"
-                className="flex justify-center items-center py-2.5 px-4 rounded-xl font-semibold text-sm text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-all shadow-lg"
+                className="flex justify-center items-center py-2.5 px-4 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all shadow-lg"
               >
                 Sign In
               </Link>
               <Link
                 to="/register"
-                className="flex justify-center items-center py-2.5 px-4 rounded-xl font-semibold text-sm text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all"
+                className="flex justify-center items-center py-2.5 px-4 rounded-xl font-bold text-xs text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all"
               >
                 Create Account
               </Link>

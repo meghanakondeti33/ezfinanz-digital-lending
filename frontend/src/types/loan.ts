@@ -9,6 +9,7 @@ export type ApplicationStatus =
   | 'SELFIE_UPLOADED'
   | 'APPROVED'
   | 'REJECTED'
+  | 'DISBURSEMENT_PROCESSING'
   | 'DISBURSED';
 
 export type EmploymentType = 'SALARIED' | 'SELF_EMPLOYED' | 'BUSINESS' | 'OTHER';

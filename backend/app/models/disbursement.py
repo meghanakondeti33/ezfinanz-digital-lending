@@ -7,6 +7,7 @@ Disbursement execution logic is NOT implemented here.
 
 import enum
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import String, Numeric, ForeignKey, Enum, Index
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
@@ -35,8 +36,19 @@ class Disbursement(Base):
         nullable=False,
         index=True,
     )
-    amount: Mapped[None] = mapped_column(
+    amount: Mapped[Decimal] = mapped_column(
         Numeric(15, 2), nullable=False
+    )
+    net_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2), nullable=True
+    )
+    destination_account_summary: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    bank_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_accounts.id", ondelete="SET NULL"),
+        nullable=True,
     )
     status: Mapped[DisbursementStatus] = mapped_column(
         Enum(DisbursementStatus, name="disbursement_status", create_constraint=True),
@@ -58,6 +70,7 @@ class Disbursement(Base):
 
     # Relationships
     application = relationship("LoanApplication", back_populates="disbursements")
+    bank_account = relationship("BankAccount")
 
     def __repr__(self) -> str:
-        return f"<Disbursement id={self.id} amount={self.amount} status={self.status}>"
+        return f"<Disbursement id={self.id} amount={self.amount} net_amount={self.net_amount} status={self.status}>"
