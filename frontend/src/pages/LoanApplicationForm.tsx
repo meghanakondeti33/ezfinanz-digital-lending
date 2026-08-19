@@ -223,7 +223,7 @@ export const LoanApplicationForm: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const selected = await selectOffer(application.id, offerId);
+      await selectOffer(application.id, offerId);
       setSuccessMessage('🎉 Loan offer selected successfully! Your repayment terms have been locked.');
 
       // Refresh application & offers
@@ -277,23 +277,21 @@ export const LoanApplicationForm: React.FC = () => {
         {/* Status Header Banner */}
         {application && (
           <div
-            className={`p-4 rounded-2xl border flex items-center justify-between ${
-              isOfferSelected
+            className={`p-4 rounded-2xl border flex items-center justify-between ${isOfferSelected
                 ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
                 : isSubmittedOrHigher
-                ? 'bg-blue-950/40 border-blue-800 text-blue-300'
-                : 'bg-yellow-950/30 border-yellow-800/60 text-yellow-300'
-            }`}
+                  ? 'bg-blue-950/40 border-blue-800 text-blue-300'
+                  : 'bg-yellow-950/30 border-yellow-800/60 text-yellow-300'
+              }`}
           >
             <div className="flex items-center space-x-3">
               <span
-                className={`h-3 w-3 rounded-full ${
-                  isOfferSelected
+                className={`h-3 w-3 rounded-full ${isOfferSelected
                     ? 'bg-emerald-400'
                     : isSubmittedOrHigher
-                    ? 'bg-blue-400 animate-pulse'
-                    : 'bg-yellow-400'
-                }`}
+                      ? 'bg-blue-400 animate-pulse'
+                      : 'bg-yellow-400'
+                  }`}
               />
               <div>
                 <span className="font-bold text-sm block">
@@ -303,10 +301,10 @@ export const LoanApplicationForm: React.FC = () => {
                   {isOfferSelected
                     ? 'Loan offer confirmed. Next phase: verification & disbursement.'
                     : application.status === 'ELIGIBILITY_CHECKED'
-                    ? 'Eligibility checked. Compare and select your preferred loan offer below.'
-                    : application.status === 'SUBMITTED'
-                    ? 'Application submitted. Click Check Eligibility to proceed.'
-                    : 'Draft application (editable). Click Submit when ready.'}
+                      ? 'Eligibility checked. Compare and select your preferred loan offer below.'
+                      : application.status === 'SUBMITTED'
+                        ? 'Application submitted. Click Check Eligibility to proceed.'
+                        : 'Draft application (editable). Click Submit when ready.'}
                 </span>
               </div>
             </div>
@@ -369,11 +367,10 @@ export const LoanApplicationForm: React.FC = () => {
         {/* Phase 4: Eligibility Decision Box */}
         {eligibility && (
           <div
-            className={`border rounded-2xl p-6 shadow-xl ${
-              eligibility.status === 'ELIGIBLE'
+            className={`border rounded-2xl p-6 shadow-xl ${eligibility.status === 'ELIGIBLE'
                 ? 'bg-emerald-950/30 border-emerald-800/80'
                 : 'bg-red-950/30 border-red-800/80'
-            }`}
+              }`}
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-4">
               <div>
@@ -447,11 +444,10 @@ export const LoanApplicationForm: React.FC = () => {
                 return (
                   <div
                     key={offer.id}
-                    className={`rounded-2xl border transition-all flex flex-col justify-between p-5 relative ${
-                      isSelected
+                    className={`rounded-2xl border transition-all flex flex-col justify-between p-5 relative ${isSelected
                         ? 'bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500 shadow-xl shadow-emerald-950/50'
                         : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                    }`}
+                      }`}
                   >
                     {/* Selected Badge */}
                     {isSelected && (
@@ -466,8 +462,8 @@ export const LoanApplicationForm: React.FC = () => {
                           {idx === 0
                             ? 'Standard Plan'
                             : idx === 1
-                            ? 'Low Monthly EMI'
-                            : 'Fast Payoff Plan'}
+                              ? 'Low Monthly EMI'
+                              : 'Fast Payoff Plan'}
                         </span>
                         <div className="mt-1">
                           <span className="text-2xl font-black text-white font-mono">
@@ -534,17 +530,16 @@ export const LoanApplicationForm: React.FC = () => {
                         type="button"
                         onClick={() => handleSelectOffer(offer.id)}
                         disabled={isSelected || selectingOfferId !== null}
-                        className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all ${
-                          isSelected
+                        className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all ${isSelected
                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 cursor-default'
                             : 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow-md'
-                        } disabled:opacity-70`}
+                          } disabled:opacity-70`}
                       >
                         {selectingOfferId === offer.id
                           ? 'Selecting…'
                           : isSelected
-                          ? '✓ Plan Confirmed'
-                          : 'Select This Offer'}
+                            ? '✓ Plan Confirmed'
+                            : 'Select This Offer'}
                       </button>
                     </div>
                   </div>

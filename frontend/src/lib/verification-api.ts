@@ -13,7 +13,7 @@ import type {
 
 export async function fetchVerificationSummary(applicationId: string): Promise<VerificationSummary> {
   const response = await apiClient.get<VerificationSummary>(
-    `/api/v1/loans/applications/${applicationId}/verification`
+    `/loans/applications/${applicationId}/verification`
   );
   return response.data;
 }
@@ -23,7 +23,7 @@ export async function submitKYC(
   payload: KYCSubmitPayload
 ): Promise<KYCData> {
   const response = await apiClient.post<KYCData>(
-    `/api/v1/loans/applications/${applicationId}/kyc`,
+    `/loans/applications/${applicationId}/kyc`,
     payload
   );
   return response.data;
@@ -31,7 +31,7 @@ export async function submitKYC(
 
 export async function fetchKYC(applicationId: string): Promise<KYCData> {
   const response = await apiClient.get<KYCData>(
-    `/api/v1/loans/applications/${applicationId}/kyc`
+    `/loans/applications/${applicationId}/kyc`
   );
   return response.data;
 }
@@ -41,7 +41,7 @@ export async function submitBankAccount(
   payload: BankAccountSubmitPayload
 ): Promise<BankAccountData> {
   const response = await apiClient.post<BankAccountData>(
-    `/api/v1/loans/applications/${applicationId}/bank-account`,
+    `/loans/applications/${applicationId}/bank-account`,
     payload
   );
   return response.data;
@@ -49,7 +49,7 @@ export async function submitBankAccount(
 
 export async function fetchBankAccount(applicationId: string): Promise<BankAccountData> {
   const response = await apiClient.get<BankAccountData>(
-    `/api/v1/loans/applications/${applicationId}/bank-account`
+    `/loans/applications/${applicationId}/bank-account`
   );
   return response.data;
 }
@@ -59,7 +59,7 @@ export async function submitSelfie(
   payload: SelfieSubmitPayload = {}
 ): Promise<SelfieData> {
   const response = await apiClient.post<SelfieData>(
-    `/api/v1/loans/applications/${applicationId}/selfie`,
+    `/loans/applications/${applicationId}/selfie`,
     payload
   );
   return response.data;
@@ -67,7 +67,7 @@ export async function submitSelfie(
 
 export async function fetchSelfie(applicationId: string): Promise<SelfieData> {
   const response = await apiClient.get<SelfieData>(
-    `/api/v1/loans/applications/${applicationId}/selfie`
+    `/loans/applications/${applicationId}/selfie`
   );
   return response.data;
 }
@@ -77,7 +77,7 @@ export async function submitDeclaration(
   payload: DeclarationSubmitPayload
 ): Promise<DeclarationData> {
   const response = await apiClient.post<DeclarationData>(
-    `/api/v1/loans/applications/${applicationId}/declaration`,
+    `/loans/applications/${applicationId}/declaration`,
     payload
   );
   return response.data;
@@ -85,7 +85,7 @@ export async function submitDeclaration(
 
 export async function fetchDeclaration(applicationId: string): Promise<DeclarationData> {
   const response = await apiClient.get<DeclarationData>(
-    `/api/v1/loans/applications/${applicationId}/declaration`
+    `/loans/applications/${applicationId}/declaration`
   );
   return response.data;
 }
