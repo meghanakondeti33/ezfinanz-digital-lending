@@ -258,15 +258,15 @@ export const Dashboard: React.FC = () => {
       status={primaryApp?.status}
       activeNav="dashboard"
     >
-      <div className="w-full max-w-5xl mx-auto space-y-7 pb-12">
+      <div className="w-full max-w-6xl mx-auto space-y-8 pb-14">
         {/* ========================================================================= */}
         {/* GREETING HEADER */}
         {/* ========================================================================= */}
-        <div className="space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial tracking-tight">
+        <div className="space-y-1.5">
+          <h1 className="text-3xl sm:text-4xl font-bold text-[#14161A] font-editorial tracking-tight">
             Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {displayName} 👋
           </h1>
-          <p className="text-xs sm:text-sm text-[#686D76]">
+          <p className="text-sm sm:text-base text-[#686D76]">
             {primaryApp
               ? "Here's the current status of your loan application."
               : "Welcome to EZFINANZ. Get instant digital personal loans with transparent terms."}
@@ -275,15 +275,15 @@ export const Dashboard: React.FC = () => {
 
         {/* Global Notifications */}
         {error && (
-          <div className="p-4 rounded-2xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-xs sm:text-sm flex items-center gap-2 shadow-2xs">
-            <span>⚠️</span>
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm flex items-center gap-2.5 shadow-2xs">
+            <span className="text-base">⚠️</span>
             <span className="font-medium">{error}</span>
           </div>
         )}
 
         {resendSuccess && (
-          <div className="p-4 rounded-2xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-xs sm:text-sm flex items-center gap-2 font-medium shadow-2xs">
-            <span>✓</span>
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-sm flex items-center gap-2.5 font-medium shadow-2xs">
+            <span className="text-base">✓</span>
             <span>{resendSuccess}</span>
           </div>
         )}
@@ -295,45 +295,45 @@ export const Dashboard: React.FC = () => {
           <Card
             variant="default"
             padding="lg"
-            className="bg-white border border-[#E5E2DC] shadow-xs rounded-2xl space-y-5"
+            className="bg-white border border-[#E5E2DC] shadow-xs rounded-2xl p-7 sm:p-8 space-y-6"
           >
-            <div className="flex items-center justify-between border-b border-[#EAE7E1] pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#EAE7E1] pb-4 gap-3">
               <div>
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#B5652D] block">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D] block">
                   CURRENT APPLICATION
                 </span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="font-mono font-bold text-base text-[#14161A]">
+                <div className="flex items-center gap-2.5 mt-1">
+                  <span className="font-mono font-bold text-lg sm:text-xl text-[#14161A]">
                     #{primaryApp.application_number}
                   </span>
-                  <span className="text-xs text-[#8A8D93]">•</span>
-                  <span className="text-xs font-semibold text-[#686D76]">
+                  <span className="text-sm text-[#8A8D93]">•</span>
+                  <span className="text-sm sm:text-base font-semibold text-[#686D76]">
                     {primaryApp.purpose || 'Personal Expense'}
                   </span>
                 </div>
               </div>
-              <StatusBadge status={primaryApp.status} size="md" />
+              <StatusBadge status={primaryApp.status} size="lg" />
             </div>
 
-            {/* Key Numbers (Clean & Readable) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 pb-1">
-              <div>
-                <span className="text-[11px] text-[#686D76] block">Requested Amount</span>
-                <span className="text-xl sm:text-2xl font-mono font-bold text-[#14161A] block mt-0.5">
+            {/* Key Numbers (Clean, Prominent & Highly Readable) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2 pb-2">
+              <div className="p-4 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]/80">
+                <span className="text-xs font-semibold text-[#686D76] uppercase tracking-wider block">Requested Amount</span>
+                <span className="text-2xl sm:text-3xl lg:text-4xl font-mono font-bold text-[#14161A] block mt-1">
                   ₹{Number(primaryApp.requested_amount || 0).toLocaleString('en-IN')}
                 </span>
               </div>
 
-              <div>
-                <span className="text-[11px] text-[#686D76] block">Repayment Tenure</span>
-                <span className="text-xl sm:text-2xl font-bold text-[#14161A] block mt-0.5">
+              <div className="p-4 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]/80">
+                <span className="text-xs font-semibold text-[#686D76] uppercase tracking-wider block">Repayment Tenure</span>
+                <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#14161A] block mt-1">
                   {primaryDisbursement?.tenure_months || primaryApp.requested_tenure_months || 24} Months
                 </span>
               </div>
 
-              <div>
-                <span className="text-[11px] text-[#686D76] block">Monthly EMI</span>
-                <span className="text-xl sm:text-2xl font-mono font-bold text-[#1E5C4A] block mt-0.5">
+              <div className="p-4 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]/80">
+                <span className="text-xs font-semibold text-[#686D76] uppercase tracking-wider block">Monthly EMI</span>
+                <span className="text-2xl sm:text-3xl lg:text-4xl font-mono font-bold text-[#1E5C4A] block mt-1">
                   {primaryDisbursement?.emi
                     ? `₹${Number(primaryDisbursement.emi).toLocaleString('en-IN')}`
                     : 'Estimated on Offer'}
@@ -341,13 +341,13 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[#EAE7E1] flex items-center justify-between text-xs text-[#8A8D93]">
+            <div className="pt-4 border-t border-[#EAE7E1] flex flex-col sm:flex-row sm:items-center justify-between text-xs sm:text-sm text-[#8A8D93] gap-2">
               <span>
-                Last updated {new Date(primaryApp.updated_at || primaryApp.created_at).toLocaleDateString('en-IN')}
+                Last updated {new Date(primaryApp.updated_at || primaryApp.created_at).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
               </span>
               <Link
                 to={`/loans/${primaryApp.id}`}
-                className="text-xs font-semibold text-[#B5652D] hover:underline"
+                className="text-xs sm:text-sm font-bold text-[#B5652D] hover:underline flex items-center gap-1"
               >
                 View Full Details →
               </Link>
@@ -355,20 +355,20 @@ export const Dashboard: React.FC = () => {
           </Card>
         ) : (
           /* Empty State */
-          <Card variant="default" padding="lg" className="bg-white border border-[#E5E2DC] shadow-xs rounded-2xl text-center py-12 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-2xl mx-auto">
+          <Card variant="default" padding="lg" className="bg-white border border-[#E5E2DC] shadow-xs rounded-2xl text-center py-14 space-y-4">
+            <div className="w-14 h-14 rounded-full bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-3xl mx-auto">
               📝
             </div>
-            <div className="max-w-md mx-auto space-y-1">
-              <h3 className="text-lg font-bold text-[#14161A] font-editorial">
+            <div className="max-w-md mx-auto space-y-1.5">
+              <h3 className="text-xl font-bold text-[#14161A] font-editorial">
                 You haven&apos;t started a loan application yet
               </h3>
-              <p className="text-xs text-[#686D76]">
+              <p className="text-sm text-[#686D76]">
                 Apply for a personal loan in a few simple steps with instant digital approval.
               </p>
             </div>
             <Link to="/loans/new">
-              <Button variant="primary" size="md" className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold">
+              <Button variant="primary" size="lg" className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold px-8">
                 Apply for a Loan →
               </Button>
             </Link>
@@ -379,27 +379,27 @@ export const Dashboard: React.FC = () => {
         {/* SECTION B: NEXT ACTION (THE SINGLE PRIMARY CTA) */}
         {/* ========================================================================= */}
         {nextAction && (
-          <div className="space-y-2">
-            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#686D76] block">
+          <div className="space-y-2.5">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#686D76] block">
               NEXT ACTION
             </span>
 
             <Card
               variant="default"
               padding="lg"
-              className={`border shadow-xs rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all ${
+              className={`border shadow-xs rounded-2xl p-6 sm:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all ${
                 nextAction.isUrgent
                   ? 'bg-[#FAF3F2] border-[#8C3A32]/30 ring-1 ring-[#8C3A32]/20'
                   : 'bg-white border-[#E5E2DC]'
               }`}
             >
               <div className="flex items-start gap-4">
-                <span className="text-2xl mt-0.5">{nextAction.icon}</span>
+                <span className="text-3xl mt-0.5">{nextAction.icon}</span>
                 <div className="space-y-1">
-                  <h3 className="text-base font-bold text-[#14161A]">
+                  <h3 className="text-base sm:text-lg font-bold text-[#14161A]">
                     {nextAction.title}
                   </h3>
-                  <p className="text-xs text-[#686D76] leading-relaxed max-w-xl">
+                  <p className="text-xs sm:text-sm text-[#686D76] leading-relaxed max-w-xl">
                     {nextAction.description}
                   </p>
                 </div>
@@ -412,7 +412,7 @@ export const Dashboard: React.FC = () => {
                     size="md"
                     isLoading={resendingEmail}
                     onClick={handleResendEmail}
-                    className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold text-xs"
+                    className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold py-3 px-6 text-sm"
                   >
                     {nextAction.ctaLabel}
                   </Button>
@@ -421,7 +421,7 @@ export const Dashboard: React.FC = () => {
                     <Button
                       variant="primary"
                       size="md"
-                      className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold text-xs"
+                      className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold py-3 px-6 text-sm"
                     >
                       {nextAction.ctaLabel}
                     </Button>
@@ -436,18 +436,18 @@ export const Dashboard: React.FC = () => {
         {/* SECTION C: COMPACT LOAN PROGRESS (HORIZONTAL STEPPER) */}
         {/* ========================================================================= */}
         {primaryApp && (
-          <div className="space-y-2">
-            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#686D76] block">
+          <div className="space-y-2.5">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#686D76] block">
               LOAN PROGRESS
             </span>
 
             <Card
               variant="default"
               padding="md"
-              className="bg-white border border-[#E5E2DC] shadow-xs rounded-2xl"
+              className="bg-white border border-[#E5E2DC] shadow-xs rounded-2xl p-5 sm:p-6"
             >
               {/* Desktop Compact Progress Bar */}
-              <div className="hidden sm:flex items-center justify-between gap-1 overflow-x-auto py-1">
+              <div className="hidden sm:flex items-center justify-between gap-1 overflow-x-auto py-2">
                 {LOAN_STAGES.map((st, index) => {
                   const state = getStageState(st.id, primaryApp.status, primaryVerifSummary);
 
@@ -456,9 +456,9 @@ export const Dashboard: React.FC = () => {
 
                   return (
                     <React.Fragment key={st.id}>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                             isDone
                               ? 'bg-[#E8F2EE] text-[#1E5C4A] border border-[#C5E0D5]'
                               : isCurrent
@@ -469,7 +469,7 @@ export const Dashboard: React.FC = () => {
                           {isDone ? '✓' : isCurrent ? '●' : '○'}
                         </span>
                         <span
-                          className={`text-xs ${
+                          className={`text-xs sm:text-sm ${
                             isCurrent
                               ? 'font-bold text-[#14161A]'
                               : isDone
@@ -499,7 +499,7 @@ export const Dashboard: React.FC = () => {
                   return (
                     <div
                       key={st.id}
-                      className={`p-2 rounded-xl border flex items-center gap-2 ${
+                      className={`p-2.5 rounded-xl border flex items-center gap-2 ${
                         isCurrent
                           ? 'bg-[#FAF3EE] border-[#F3D7C4] text-[#B5652D] font-bold'
                           : isDone
@@ -521,28 +521,28 @@ export const Dashboard: React.FC = () => {
         {/* QUICK STATUS OVERVIEW WIDGETS (VERIFICATION & DOCUMENTS PREVIEW) */}
         {/* ========================================================================= */}
         {primaryApp && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Verification Widget */}
             <Card
               variant="default"
               padding="md"
-              className="bg-white border border-[#E5E2DC] shadow-2xs rounded-2xl flex items-center justify-between"
+              className="bg-white border border-[#E5E2DC] shadow-2xs rounded-2xl p-5 flex items-center justify-between"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-lg">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-xl">
                   🛡️
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-[#14161A] block">
+                  <span className="text-sm font-bold text-[#14161A] block">
                     Verification
                   </span>
-                  <span className="text-[11px] text-[#686D76] block">
+                  <span className="text-xs text-[#686D76] block">
                     {verificationCompletedCount} of 4 steps completed
                   </span>
                 </div>
               </div>
               <Link to="/verification">
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs font-semibold py-2 px-3.5">
                   Review Verification →
                 </Button>
               </Link>
@@ -552,23 +552,23 @@ export const Dashboard: React.FC = () => {
             <Card
               variant="default"
               padding="md"
-              className="bg-white border border-[#E5E2DC] shadow-2xs rounded-2xl flex items-center justify-between"
+              className="bg-white border border-[#E5E2DC] shadow-2xs rounded-2xl p-5 flex items-center justify-between"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-lg">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-xl">
                   📁
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-[#14161A] block">
+                  <span className="text-sm font-bold text-[#14161A] block">
                     Documents
                   </span>
-                  <span className="text-[11px] text-[#686D76] block">
+                  <span className="text-xs text-[#686D76] block">
                     KYC ID & Live Selfie
                   </span>
                 </div>
               </div>
               <Link to="/documents">
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs font-semibold py-2 px-3.5">
                   View Documents →
                 </Button>
               </Link>

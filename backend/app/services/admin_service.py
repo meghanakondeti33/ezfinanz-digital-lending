@@ -21,7 +21,7 @@ from app.models.eligibility import EligibilityCheck
 from app.models.kyc import KYCDetail
 from app.models.loan import ApplicationStatus, LoanApplication
 from app.models.offer import LoanOffer, OfferStatus
-from app.models.selfie import SelfieVerification
+from app.models.selfie import SelfieVerification, SelfieVerificationStatus
 from app.models.user import User
 from app.schemas.admin import (
     AdminApplicationDetailResponse,
@@ -362,7 +362,49 @@ def process_admin_underwriting_decision(
             "Only applications in 'UNDER_REVIEW' can be approved or rejected."
         )
 
-    # 2. Rejection validation: Reason category is mandatory for rejection
+    # 2. Hard block for APPROVED decision if mandatory verification checks are incomplete
+    if data.decision == ReviewDecision.APPROVED:
+        missing_checks = []
+
+        # Check KYC document
+        kyc = db.execute(
+            select(KYCDetail).where(KYCDetail.user_id == app.user_id)
+        ).scalar_one_or_none()
+        if not kyc or not kyc.document_storage_key:
+            missing_checks.append("KYC document upload required")
+        elif kyc.document_status not in ("KYC_VERIFIED", "VERIFIED", "APPROVED"):
+            missing_checks.append("KYC document approval required")
+
+        # Check Live photo / selfie
+        selfie = db.execute(
+            select(SelfieVerification).where(SelfieVerification.application_id == app.id)
+        ).scalar_one_or_none()
+        if not selfie or not selfie.storage_key:
+            missing_checks.append("Live photo submission required")
+        elif selfie.status not in (SelfieVerificationStatus.PHOTO_APPROVED, SelfieVerificationStatus.VERIFIED):
+            missing_checks.append("Live photo verification required")
+
+        # Check Bank Account
+        bank = db.execute(
+            select(BankAccount).where(BankAccount.application_id == app.id)
+        ).scalar_one_or_none()
+        if not bank:
+            missing_checks.append("Destination bank account verification required")
+
+        # Check Declaration
+        declaration = db.execute(
+            select(Declaration).where(Declaration.application_id == app.id)
+        ).scalar_one_or_none()
+        if not declaration or not declaration.accepted:
+            missing_checks.append("Borrower legal declaration required")
+
+        if missing_checks:
+            bullet_list = "\n• " + "\n• ".join(missing_checks)
+            raise ValidationError(
+                f"Loan cannot be approved. Complete the following verification checks:{bullet_list}"
+            )
+
+    # 3. Rejection validation: Reason category is mandatory for rejection
     if data.decision == ReviewDecision.REJECTED:
         if not data.rejection_reason or not data.rejection_reason.strip():
             raise ValidationError("A rejection reason category is required when rejecting an application.")

@@ -175,6 +175,15 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   // Step 1: Handle KYC Submission
   const handleKYCSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!uploadedDocInfo) {
+      setError('Please upload your identity document before continuing.');
+      return;
+    }
+    if (uploadedDocInfo.status === 'KYC_REJECTED') {
+      setError('Your previous KYC document was rejected. Please upload a replacement document before continuing.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -182,7 +191,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
     try {
       const res = await submitKYC(applicationId, kycForm);
       setKycData(res);
-      setSuccess('Identity details recorded and verified.');
+      setSuccess('Identity details and document recorded successfully.');
       await loadState();
       setActiveStep(2);
     } catch (err: any) {
@@ -254,6 +263,11 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   // Step 4: Handle Declaration Acceptance
   const handleDeclarationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!uploadedDocInfo) {
+      setError('Please upload your identity document before continuing.');
+      setActiveStep(1);
+      return;
+    }
     if (!declarationAccepted) {
       setError('Please acknowledge the terms to complete verification.');
       return;
@@ -386,10 +400,10 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
           </div>
 
           {kycData ? (
-            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-3">
+            <div className="p-5 bg-white border border-[#C5E0D5] rounded-xl space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm sm:text-base font-bold text-[#1E5C4A] flex items-center gap-1.5">
-                  <span>✓</span> Identity Verified ({kycData.id_type})
+                  <span>✓</span> Identity Details Verified ({kycData.id_type})
                 </span>
                 <span className="font-mono text-sm text-[#686D76]">{kycData.id_number_masked}</span>
               </div>
@@ -398,8 +412,86 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
                 <div>DOB: <strong className="text-[#14161A]">{kycData.date_of_birth}</strong></div>
                 <div className="col-span-2">Address: <strong className="text-[#14161A]">{kycData.address_line_1}, {kycData.city}, {kycData.state} - {kycData.pincode}</strong></div>
               </div>
+
+              {/* KYC Document Status inside verified view */}
+              <div className="pt-3 border-t border-[#E5E2DC] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#14161A]">
+                      Supporting Identity Document (PDF)
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-[#FBEFEC] text-[#8C3A32] border border-[#F0D0CB]">
+                      REQUIRED
+                    </span>
+                  </div>
+                  <span className="text-xs text-[#8A8D93]">Max 5 MB • PDF format</span>
+                </div>
+
+                {uploadedDocInfo?.status === 'KYC_REJECTED' && (
+                  <div className="p-3 bg-[#FBEFEC] border border-[#F0D0CB] rounded-xl text-xs text-[#8C3A32] space-y-1">
+                    <span className="font-bold">⚠️ KYC document replacement required</span>
+                    <p>{uploadedDocInfo.rejection_reason || 'Please upload a clearer copy.'}</p>
+                  </div>
+                )}
+
+                {uploadedDocInfo && uploadedDocInfo.status !== 'KYC_REJECTED' ? (
+                  <div className="p-3 bg-[#FAF8F5] border border-[#C5E0D5] rounded-xl text-xs flex items-center justify-between">
+                    <span className="text-[#1E5C4A] font-semibold flex items-center gap-1.5">
+                      <span>📄</span>
+                      <span>{uploadedDocInfo.filename}</span>
+                      <span className="text-[11px] text-[#686D76] font-normal">
+                        ({uploadedDocInfo.status.replace(/_/g, ' ')})
+                      </span>
+                    </span>
+                    <label className="text-xs text-[#B5652D] hover:underline cursor-pointer font-bold">
+                      {uploadingKycDoc ? 'Uploading...' : 'Replace PDF'}
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        disabled={uploadingKycDoc}
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleKYCDocumentUpload(e.target.files[0]);
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="flex flex-col items-center justify-center py-4 px-4 bg-[#FAF8F5] border-2 border-dashed border-[#B5652D]/40 hover:border-[#B5652D] rounded-xl text-center cursor-pointer transition-all">
+                      <span className="text-sm font-semibold text-[#14161A]">
+                        {uploadingKycDoc ? '⏳ Uploading document...' : '📄 Click to Upload Required PDF Document'}
+                      </span>
+                      <span className="text-xs text-[#8C3A32] font-medium mt-0.5">
+                        Please upload your identity document before continuing.
+                      </span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        disabled={uploadingKycDoc}
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleKYCDocumentUpload(e.target.files[0]);
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-2 flex justify-end">
-                <Button variant="primary" size="md" onClick={() => setActiveStep(2)}>
+                <Button
+                  variant="primary"
+                  size="md"
+                  disabled={!uploadedDocInfo || uploadedDocInfo.status === 'KYC_REJECTED'}
+                  onClick={() => {
+                    if (!uploadedDocInfo || uploadedDocInfo.status === 'KYC_REJECTED') {
+                      setError('Please upload your identity document before continuing.');
+                      return;
+                    }
+                    setActiveStep(2);
+                  }}
+                >
                   Continue to Bank Verification →
                 </Button>
               </div>
@@ -485,9 +577,14 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
               {/* KYC Document Upload */}
               <div className="p-4 bg-[#FAF8F5] border border-[#E5E2DC] rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#14161A]">
-                    Supporting Identity Document (PDF)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#14161A]">
+                      Supporting Identity Document (PDF)
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-[#FBEFEC] text-[#8C3A32] border border-[#F0D0CB]">
+                      REQUIRED
+                    </span>
+                  </div>
                   <span className="text-xs text-[#8A8D93]">Max 5 MB • PDF format</span>
                 </div>
 
@@ -524,7 +621,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
                   <div>
                     <label className="flex flex-col items-center justify-center py-4 px-4 bg-white border-2 border-dashed border-[#D4D0C7] hover:border-[#B5652D] rounded-xl text-center cursor-pointer transition-all">
                       <span className="text-sm font-semibold text-[#14161A]">
-                        {uploadingKycDoc ? '⏳ Uploading document...' : '📄 Click to Choose PDF Document'}
+                        {uploadingKycDoc ? '⏳ Uploading document...' : '📄 Click to Choose PDF Document (Required)'}
                       </span>
                       <span className="text-xs text-[#8A8D93] mt-0.5">
                         Aadhaar Card, PAN Card, Passport, or Driving License

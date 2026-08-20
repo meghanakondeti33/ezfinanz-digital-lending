@@ -928,6 +928,25 @@ def submit_declaration(
     if not data.accepted:
         raise ValidationError("Declaration terms must be explicitly accepted.")
 
+    # Verify KYC identity document is uploaded
+    kyc_chk = db.execute(select(KYCDetail).where(KYCDetail.user_id == user.id)).scalar_one_or_none()
+    if not kyc_chk or not kyc_chk.document_storage_key:
+        raise ValidationError("Please upload your required KYC identity document before continuing.")
+    if kyc_chk.document_status == "KYC_REJECTED":
+        raise ValidationError("Your KYC identity document was rejected. Please upload a replacement document before continuing.")
+
+    # Verify Live Photo is submitted
+    selfie_chk = db.execute(select(SelfieVerification).where(SelfieVerification.application_id == application.id)).scalar_one_or_none()
+    if not selfie_chk or not selfie_chk.storage_key:
+        raise ValidationError("Please submit your required live photo capture before continuing.")
+    if selfie_chk.status == SelfieVerificationStatus.PHOTO_RETAKE_REQUIRED:
+        raise ValidationError("A photo retake was requested. Please capture a new live photo before continuing.")
+
+    # Verify Bank Account is submitted
+    bank_chk = db.execute(select(BankAccount).where(BankAccount.application_id == application.id)).scalar_one_or_none()
+    if not bank_chk:
+        raise ValidationError("Please link and verify your destination bank account before continuing.")
+
     # 1. Create or update Declaration record
     existing_dec = db.execute(
         select(Declaration).where(Declaration.application_id == application.id)
@@ -1002,10 +1021,25 @@ def get_verification_summary(
     application = get_loan_application(db, user, application_id)
 
     # Check KYC
-    kyc_exists = db.execute(
-        select(KYCDetail.id).where(KYCDetail.user_id == user.id)
+    kyc = db.execute(
+        select(KYCDetail).where(KYCDetail.user_id == user.id)
     ).scalar_one_or_none()
-    kyc_status = "VERIFIED" if kyc_exists else "NOT_STARTED"
+    
+    if not kyc:
+        kyc_status = "NOT_STARTED"
+        has_kyc_doc = False
+    elif kyc.document_status in ("KYC_VERIFIED", "VERIFIED", "APPROVED"):
+        kyc_status = "VERIFIED"
+        has_kyc_doc = bool(kyc.document_storage_key)
+    elif kyc.document_status == "KYC_REJECTED":
+        kyc_status = "REPLACEMENT_REQUIRED"
+        has_kyc_doc = bool(kyc.document_storage_key)
+    elif kyc.document_storage_key:
+        kyc_status = "PENDING_REVIEW"
+        has_kyc_doc = True
+    else:
+        kyc_status = "DOCUMENT_REQUIRED"
+        has_kyc_doc = False
 
     # Check Bank Account
     bank_exists = db.execute(
@@ -1040,7 +1074,9 @@ def get_verification_summary(
     )
 
     is_ready = (
-        kyc_status == "VERIFIED"
+        has_kyc_doc
+        and kyc is not None
+        and kyc.document_status != "KYC_REJECTED"
         and bank_status == "VERIFIED"
         and photo_submitted
         and dec_status == "ACCEPTED"

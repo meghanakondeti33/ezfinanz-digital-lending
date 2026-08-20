@@ -84,14 +84,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 Dashboard
               </Link>
               <Link
-                to="/applications"
+                to="/history"
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  location.pathname === '/applications' || location.hash === '#applications'
+                  location.pathname === '/history' || location.pathname === '/applications'
                     ? 'bg-[#FAF3EE] text-[#B5652D] font-bold'
                     : 'text-[#686D76] hover:text-[#14161A] hover:bg-[#F7F5F1]'
                 }`}
               >
-                My Applications
+                History & Records
               </Link>
               <Link
                 to="/documents"

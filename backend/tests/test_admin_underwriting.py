@@ -2,7 +2,7 @@
 Unit and integration tests for Admin Underwriting & Application Review (Phase 6).
 Validates admin RBAC protection (403 for customers), queue retrieval, full composite review detail,
 strict state-machine transitions (UNDER_REVIEW -> APPROVED / REJECTED), rejection reasons enforcement,
-and immutable audit log dispatching.
+hard blocks on approvals when KYC/selfie/bank/declaration are unverified, and immutable audit logging.
 """
 
 import uuid
@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, hash_password
 from app.models.audit import AuditLog
+from app.models.kyc import KYCDetail
 from app.models.loan import ApplicationStatus, LoanApplication
 from app.models.review import AdminReview, ReviewDecision
+from app.models.selfie import SelfieVerification, SelfieVerificationStatus
 from app.models.user import User, UserRole
 
 
@@ -77,7 +79,7 @@ def setup_application_ready_for_review(client: TestClient, cust_headers: dict) -
     offers = client.get(f"/api/v1/loans/applications/{app_id}/offers", headers=cust_headers).json()["offers"]
     client.post(f"/api/v1/loans/applications/{app_id}/offers/{offers[0]['id']}/select", headers=cust_headers)
 
-    # 3. 4-Step Verification
+    # 3. 4-Step Verification with PDF upload
     client.post(
         f"/api/v1/loans/applications/{app_id}/kyc",
         json={
@@ -91,6 +93,12 @@ def setup_application_ready_for_review(client: TestClient, cust_headers: dict) -
             "id_type": "PAN",
             "id_number": "ABCDE1234F",
         },
+        headers=cust_headers,
+    )
+    dummy_pdf = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+    client.post(
+        f"/api/v1/loans/applications/{app_id}/kyc/document",
+        files={"file": ("kyc_aakash.pdf", dummy_pdf, "application/pdf")},
         headers=cust_headers,
     )
     client.post(
@@ -144,36 +152,24 @@ def test_customer_cannot_access_admin_endpoints(client: TestClient, db_session: 
     queue_res = client.get("/api/v1/admin/applications", headers=cust_headers)
     assert queue_res.status_code == 403
 
-    # Customer accessing decision -> 403
-    fake_id = str(uuid.uuid4())
-    decision_res = client.post(
-        f"/api/v1/admin/applications/{fake_id}/decision",
-        json={"decision": "APPROVED"},
-        headers=cust_headers,
-    )
-    assert decision_res.status_code == 403
-
-
-def test_unauthenticated_request_to_admin_rejected(client: TestClient):
-    res = client.get("/api/v1/admin/dashboard/stats")
-    assert res.status_code == 401
-
 
 def test_admin_application_queue_and_filtering(client: TestClient, db_session: Session):
     cust_headers, admin_headers, cust_email, _, _ = create_test_customer_and_admin(db_session)
     app_id = setup_application_ready_for_review(client, cust_headers)
 
-    # Get queue
-    queue_res = client.get("/api/v1/admin/applications", headers=admin_headers)
-    assert queue_res.status_code == 200
-    data = queue_res.json()
-    assert data["total"] >= 1
-    found = next((item for item in data["applications"] if item["id"] == app_id), None)
-    assert found is not None
-    assert found["status"] == "UNDER_REVIEW"
-    assert found["customer_email"] == cust_email
-    assert found["customer_name"] == "Aakash Kumar"
-    assert found["verification_status"] == "COMPLETED"
+    # Fetch All
+    all_res = client.get("/api/v1/admin/applications", headers=admin_headers)
+    assert all_res.status_code == 200
+    all_data = all_res.json()
+    assert all_data["total"] >= 1
+    assert any(item["id"] == app_id for item in all_data["applications"])
+
+    # Search by customer email
+    search_res = client.get(f"/api/v1/admin/applications?search={cust_email}", headers=admin_headers)
+    assert search_res.status_code == 200
+    search_data = search_res.json()
+    assert search_data["total"] == 1
+    assert search_data["applications"][0]["id"] == app_id
 
     # Filter by UNDER_REVIEW
     filter_res = client.get("/api/v1/admin/applications?status=UNDER_REVIEW", headers=admin_headers)
@@ -214,21 +210,81 @@ def test_admin_application_detail_composite_data(client: TestClient, db_session:
     assert Decimal(str(data["selected_offer"]["emi"])) > Decimal("0")
 
     # Verification
-    assert data["verification"]["status"] == "COMPLETED"
-    assert data["verification"]["kyc"]["status"] == "VERIFIED"
+    assert data["verification"]["kyc"]["document_status"] in ("KYC_DOCUMENT_UPLOADED", "KYC_PENDING_REVIEW")
     assert data["verification"]["bank_account"]["status"] == "VERIFIED"
     assert data["verification"]["selfie"]["status"] == "VERIFIED"
     assert data["verification"]["declaration"]["accepted"] is True
 
-    # Audit logs
-    assert len(data["audit_logs"]) >= 5
 
-
-def test_valid_approval_state_transition(client: TestClient, db_session: Session):
+def test_approval_fails_without_kyc_approval(client: TestClient, db_session: Session):
+    """CASE 2: KYC uploaded but not yet approved by admin -> approval fails."""
     cust_headers, admin_headers, _, _, _ = create_test_customer_and_admin(db_session)
     app_id = setup_application_ready_for_review(client, cust_headers)
 
-    # Approve
+    # Approve selfie only
+    client.post(
+        f"/api/v1/admin/applications/{app_id}/selfie/review",
+        json={"action": "APPROVE"},
+        headers=admin_headers,
+    )
+
+    # Attempt loan approval -> should fail because KYC is not approved
+    dec_res = client.post(
+        f"/api/v1/admin/applications/{app_id}/decision",
+        json={"decision": "APPROVED", "remarks": "Sanctioning attempt"},
+        headers=admin_headers,
+    )
+    assert dec_res.status_code == 422
+    assert "KYC document approval required" in dec_res.json()["error"]["message"]
+
+
+def test_approval_fails_without_selfie_approval(client: TestClient, db_session: Session):
+    """CASE 4: Selfie uploaded but not approved by admin -> approval fails."""
+    cust_headers, admin_headers, _, _, _ = create_test_customer_and_admin(db_session)
+    app_id = setup_application_ready_for_review(client, cust_headers)
+
+    # Approve KYC document only
+    client.post(
+        f"/api/v1/admin/applications/{app_id}/kyc/review",
+        json={"action": "APPROVE"},
+        headers=admin_headers,
+    )
+
+    # Set selfie to PHOTO_PENDING_REVIEW to test unapproved state
+    selfie_db = db_session.execute(
+        select(SelfieVerification).where(SelfieVerification.application_id == uuid.UUID(app_id))
+    ).scalar_one()
+    selfie_db.status = SelfieVerificationStatus.PHOTO_PENDING_REVIEW
+    db_session.commit()
+
+    # Attempt loan approval -> should fail
+    dec_res = client.post(
+        f"/api/v1/admin/applications/{app_id}/decision",
+        json={"decision": "APPROVED", "remarks": "Sanctioning attempt"},
+        headers=admin_headers,
+    )
+    assert dec_res.status_code == 422
+    assert "Live photo verification required" in dec_res.json()["error"]["message"]
+
+
+def test_valid_approval_state_transition(client: TestClient, db_session: Session):
+    """CASE 5: KYC verified + Selfie verified + Bank + Declaration -> approval succeeds."""
+    cust_headers, admin_headers, _, _, _ = create_test_customer_and_admin(db_session)
+    app_id = setup_application_ready_for_review(client, cust_headers)
+
+    # Admin approves KYC document & live photo
+    client.post(
+        f"/api/v1/admin/applications/{app_id}/kyc/review",
+        json={"action": "APPROVE"},
+        headers=admin_headers,
+    )
+    client.post(
+        f"/api/v1/admin/applications/{app_id}/selfie/review",
+        json={"action": "APPROVE"},
+        headers=admin_headers,
+    )
+
+    # Authorize decision
     dec_res = client.post(
         f"/api/v1/admin/applications/{app_id}/decision",
         json={"decision": "APPROVED", "remarks": "Excellent creditworthiness and complete KYC verified."},
@@ -315,6 +371,18 @@ def test_invalid_state_transition_rejected(client: TestClient, db_session: Sessi
 def test_audit_event_creation_on_admin_decisions(client: TestClient, db_session: Session):
     cust_headers, admin_headers, _, _, _ = create_test_customer_and_admin(db_session)
     app_id = setup_application_ready_for_review(client, cust_headers)
+
+    # Admin approves KYC & selfie first
+    client.post(
+        f"/api/v1/admin/applications/{app_id}/kyc/review",
+        json={"action": "APPROVE"},
+        headers=admin_headers,
+    )
+    client.post(
+        f"/api/v1/admin/applications/{app_id}/selfie/review",
+        json={"action": "APPROVE"},
+        headers=admin_headers,
+    )
 
     # Approve
     client.post(

@@ -5,7 +5,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import VerifyEmail from './pages/VerifyEmail';
 import LoanApplicationForm from './pages/LoanApplicationForm';
-import CustomerApplications from './pages/CustomerApplications';
+import CustomerHistory from './pages/CustomerHistory';
 import CustomerVerification from './pages/CustomerVerification';
 import CustomerDocuments from './pages/CustomerDocuments';
 import CurrentLoanRedirect from './pages/CurrentLoanRedirect';
@@ -33,10 +33,18 @@ function App() {
           }
         />
         <Route
+          path="/history"
+          element={
+            <ProtectedRoute>
+              <CustomerHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/applications"
           element={
             <ProtectedRoute>
-              <CustomerApplications />
+              <CustomerHistory />
             </ProtectedRoute>
           }
         />
