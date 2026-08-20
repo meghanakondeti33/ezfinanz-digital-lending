@@ -5,8 +5,13 @@ All secrets and environment-specific values are read from .env files
 or environment variables — never hardcoded.
 """
 
+from decimal import Decimal
 from pydantic_settings import BaseSettings
 from pydantic import Field
+
+# Centralized Lending Limit Rules
+MIN_LOAN_AMOUNT: Decimal = Decimal("10000.00")
+MAX_LOAN_AMOUNT: Decimal = Decimal("1000000.00")
 
 
 class Settings(BaseSettings):
@@ -16,6 +21,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "EZFINANZ"
     APP_ENV: str = "development"
     DEBUG: bool = True
+
+    # Lending Limits (in INR)
+    MIN_LOAN_AMOUNT: Decimal = MIN_LOAN_AMOUNT
+    MAX_LOAN_AMOUNT: Decimal = MAX_LOAN_AMOUNT
 
     # Database
     DATABASE_URL: str = Field(

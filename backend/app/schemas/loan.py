@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.config import MIN_LOAN_AMOUNT, MAX_LOAN_AMOUNT
 from app.models.loan import ApplicationStatus
 
 
@@ -30,6 +31,16 @@ class LoanApplicationCreate(BaseModel):
     existing_debt: Optional[Decimal] = Field(None, ge=0, description="Existing monthly debt obligations in INR")
     requested_tenure_months: Optional[int] = Field(None, ge=1, le=120, description="Requested loan tenure in months")
 
+    @field_validator("requested_amount")
+    @classmethod
+    def validate_requested_amount(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None:
+            if v < MIN_LOAN_AMOUNT:
+                raise ValueError(f"Requested loan amount must be at least ₹{MIN_LOAN_AMOUNT:,.2f}")
+            if v > MAX_LOAN_AMOUNT:
+                raise ValueError(f"Requested loan amount cannot exceed ₹{MAX_LOAN_AMOUNT:,.2f}")
+        return v
+
     model_config = {
         "extra": "forbid",
     }
@@ -45,6 +56,16 @@ class LoanApplicationUpdate(BaseModel):
     designation: Optional[str] = Field(None, max_length=255)
     existing_debt: Optional[Decimal] = Field(None, ge=0)
     requested_tenure_months: Optional[int] = Field(None, ge=1, le=120)
+
+    @field_validator("requested_amount")
+    @classmethod
+    def validate_requested_amount(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None:
+            if v < MIN_LOAN_AMOUNT:
+                raise ValueError(f"Requested loan amount must be at least ₹{MIN_LOAN_AMOUNT:,.2f}")
+            if v > MAX_LOAN_AMOUNT:
+                raise ValueError(f"Requested loan amount cannot exceed ₹{MAX_LOAN_AMOUNT:,.2f}")
+        return v
 
     model_config = {
         "extra": "forbid",

@@ -21,8 +21,7 @@ import type { DisbursementDetail } from '../types/disbursement';
 import type { VerificationSummary } from '../types/verification';
 import { VerificationWizard } from '../components/verification/VerificationWizard';
 import { extractErrorMessage } from '../lib/error-utils';
-import { Navbar } from '../components/navigation/Navbar';
-import { LedgerLine } from '../components/journey/LedgerLine';
+import { CustomerLayout } from '../components/layout/CustomerLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -47,16 +46,17 @@ const EMPLOYMENT_OPTIONS = [
   { value: 'SALARIED', label: 'Salaried Professional' },
   { value: 'SELF_EMPLOYED', label: 'Self-Employed Professional' },
   { value: 'BUSINESS', label: 'Business Owner' },
-  { value: 'OTHER', label: 'Other' },
+  { value: 'OTHER', label: 'Other / Freelancer' },
 ];
 
 export const LoanApplicationForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isNew = !id || id === 'new';
 
   const [application, setApplication] = useState<LoanApplication | null>(null);
-  const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
+  const [, setEligibility] = useState<EligibilityCheck | null>(null);
   const [offers, setOffers] = useState<LoanOffer[]>([]);
   const [disbursement, setDisbursement] = useState<DisbursementDetail | null>(null);
   const [verifSummary, setVerifSummary] = useState<VerificationSummary | null>(null);
@@ -68,8 +68,6 @@ export const LoanApplicationForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const [searchParams] = useSearchParams();
-
   // Form state
   const [requestedAmount, setRequestedAmount] = useState<string>('');
   const [purpose, setPurpose] = useState<string>('Home renovation');
@@ -80,6 +78,14 @@ export const LoanApplicationForm: React.FC = () => {
   const [designation, setDesignation] = useState<string>('');
   const [existingDebt, setExistingDebt] = useState<string>('0');
   const [requestedTenureMonths, setRequestedTenureMonths] = useState<number>(36);
+
+  // Touched state for natural inline validation
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // Verification mode param
+  const modeParam = searchParams.get('mode');
+  const verificationInitialMode: 'retake' | 'capture' | undefined =
+    modeParam === 'retake' ? 'retake' : modeParam === 'capture' ? 'capture' : undefined;
 
   useEffect(() => {
     if (!isNew && id) {
@@ -120,7 +126,14 @@ export const LoanApplicationForm: React.FC = () => {
       }
 
       // If application has moved past submitted, fetch offers
-      if (data.status === 'ELIGIBILITY_CHECKED' || data.status === 'OFFER_SELECTED' || data.status === 'UNDER_REVIEW' || data.status === 'APPROVED' || data.status === 'DISBURSEMENT_PROCESSING' || data.status === 'DISBURSED') {
+      if (
+        data.status === 'ELIGIBILITY_CHECKED' ||
+        data.status === 'OFFER_SELECTED' ||
+        data.status === 'UNDER_REVIEW' ||
+        data.status === 'APPROVED' ||
+        data.status === 'DISBURSEMENT_PROCESSING' ||
+        data.status === 'DISBURSED'
+      ) {
         loadOffers(appId);
       }
 
@@ -171,26 +184,62 @@ export const LoanApplicationForm: React.FC = () => {
     };
   };
 
+  // Field validation helpers
+  const getAmountError = (): string | undefined => {
+    if (!touched.requestedAmount) return undefined;
+    if (!requestedAmount) return 'Please enter your requested loan amount.';
+    const val = parseFloat(requestedAmount);
+    if (isNaN(val) || val < 10000) return 'Minimum loan amount is ₹10,000.';
+    if (val > 1000000) return 'Maximum loan amount is ₹10,00,000.';
+    return undefined;
+  };
+
+  const getIncomeError = (): string | undefined => {
+    if (!touched.monthlyIncome) return undefined;
+    if (!monthlyIncome) return 'Please enter your gross monthly income.';
+    const val = parseFloat(monthlyIncome);
+    if (isNaN(val) || val < 5000) return 'Minimum monthly income requirement is ₹5,000.';
+    return undefined;
+  };
+
+  const getEmployerError = (): string | undefined => {
+    if (!touched.employerName) return undefined;
+    if (!employerName.trim()) {
+      return employmentType === 'SALARIED'
+        ? 'Please enter your employer or company name.'
+        : 'Please enter your business or enterprise name.';
+    }
+    return undefined;
+  };
+
+  const getDesignationError = (): string | undefined => {
+    if (!touched.designation) return undefined;
+    if (!designation.trim()) {
+      return employmentType === 'SALARIED'
+        ? 'Please enter your job title or designation.'
+        : 'Please enter your profession or business role.';
+    }
+    return undefined;
+  };
+
   const handleSaveDraft = async () => {
-    setSaving(true);
     setError(null);
     setSuccessMessage(null);
-
-    const payload = getFormData();
-
+    setSaving(true);
     try {
+      const payload = getFormData();
       if (isNew) {
         const created = await createApplication(payload);
         setApplication(created);
-        setSuccessMessage('Draft application saved. You can return at any time.');
+        setSuccessMessage('✓ Application draft saved successfully.');
         navigate(`/loans/${created.id}`, { replace: true });
       } else if (application) {
         const updated = await updateDraft(application.id, payload);
         setApplication(updated);
-        setSuccessMessage('Draft application updated successfully.');
+        setSuccessMessage('✓ Application draft updated.');
       }
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to save draft.'));
+      setError(extractErrorMessage(err, 'Failed to save application draft.'));
     } finally {
       setSaving(false);
     }
@@ -198,56 +247,83 @@ export const LoanApplicationForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
     setSuccessMessage(null);
 
-    const payload = getFormData();
+    // Mark all as touched
+    setTouched({
+      requestedAmount: true,
+      monthlyIncome: true,
+      employerName: true,
+      designation: true,
+    });
 
+    if (!requestedAmount || parseFloat(requestedAmount) < 10000 || parseFloat(requestedAmount) > 1000000) {
+      setError('Please enter a valid loan amount between ₹10,000 and ₹10,00,000.');
+      return;
+    }
+
+    if (!monthlyIncome || parseFloat(monthlyIncome) < 5000) {
+      setError('Please enter a valid monthly income of at least ₹5,000.');
+      return;
+    }
+
+    if (!employerName.trim()) {
+      setError('Please provide your employer or business name.');
+      return;
+    }
+
+    if (!designation.trim()) {
+      setError('Please provide your job title or designation.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      let currentAppId = application?.id;
+      const payload = getFormData();
+      let currentApp = application;
 
-      if (isNew || !currentAppId) {
-        const created = await createApplication(payload);
-        currentAppId = created.id;
-        setApplication(created);
-      } else {
-        const updated = await updateDraft(currentAppId, payload);
-        setApplication(updated);
+      if (isNew) {
+        currentApp = await createApplication(payload);
+      } else if (application) {
+        currentApp = await updateDraft(application.id, payload);
       }
 
-      const submitted = await submitApplication(currentAppId);
+      if (!currentApp) throw new Error('Could not initialize loan application.');
+
+      const submitted = await submitApplication(currentApp.id);
       setApplication(submitted);
-      setSuccessMessage('Application submitted. Check your borrowing eligibility below.');
-      navigate(`/loans/${submitted.id}`, { replace: true });
+      setSuccessMessage('✓ Application submitted! Ready for credit eligibility assessment.');
+
+      if (isNew) {
+        navigate(`/loans/${submitted.id}`, { replace: true });
+      }
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to submit application. Please check required fields.'));
+      setError(extractErrorMessage(err, 'Failed to submit application.'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCheckEligibility = async () => {
+  const handleEvaluateEligibility = async () => {
     if (!application) return;
-    setEvaluating(true);
     setError(null);
     setSuccessMessage(null);
-
+    setEvaluating(true);
     try {
-      const checkResult = await checkEligibility(application.id);
-      setEligibility(checkResult);
+      const result = await checkEligibility(application.id);
+      setEligibility(result);
+      const refreshed = await fetchApplication(application.id);
+      setApplication(refreshed);
 
-      const updatedApp = await fetchApplication(application.id);
-      setApplication(updatedApp);
-
-      if (checkResult.status === 'ELIGIBLE') {
-        setSuccessMessage('Great news! Your application passed credit assessment.');
+      if (refreshed.status === 'ELIGIBILITY_CHECKED') {
         await loadOffers(application.id);
-      } else {
-        setError('Application is not eligible based on standard criteria. See details below.');
+        setSuccessMessage('✓ Congratulations! You are eligible for our pre-approved loan options.');
+      } else if (refreshed.status === 'REJECTED') {
+        setError('Credit assessment could not approve this request based on debt-to-income limits.');
       }
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to evaluate loan eligibility.'));
+      setError(extractErrorMessage(err, 'Credit eligibility check failed.'));
     } finally {
       setEvaluating(false);
     }
@@ -255,39 +331,38 @@ export const LoanApplicationForm: React.FC = () => {
 
   const handleSelectOffer = async (offerId: string) => {
     if (!application) return;
-    setSelectingOfferId(offerId);
     setError(null);
     setSuccessMessage(null);
-
+    setSelectingOfferId(offerId);
     try {
       await selectOffer(application.id, offerId);
-      setSuccessMessage('Repayment plan confirmed. Please complete the quick verification steps below.');
-
-      const updatedApp = await fetchApplication(application.id);
-      setApplication(updatedApp);
-      await loadOffers(application.id);
+      const refreshed = await fetchApplication(application.id);
+      setApplication(refreshed);
+      setSuccessMessage('✓ Plan selected! Proceeding to identity verification.');
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to select loan offer.'));
+      setError(extractErrorMessage(err, 'Failed to select loan plan.'));
     } finally {
       setSelectingOfferId(null);
     }
   };
 
-  const isSubmittedOrHigher =
-    application?.status !== undefined &&
-    application?.status !== 'DRAFT';
+  // Derive verification progress
+  const hasPhotoRetake = verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED';
+  const actionRequiredReason = hasPhotoRetake
+    ? verifSummary?.selfie_details?.rejection_reason ||
+      'Please submit a clearer photo with your face fully visible.'
+    : null;
 
-  const isApprovedOrBeyond =
-    application?.status === 'APPROVED' ||
-    application?.status === 'DISBURSEMENT_PROCESSING' ||
-    application?.status === 'DISBURSED';
-
-  const isUnderReviewOrBeyond =
-    application?.status === 'UNDER_REVIEW' ||
-    isApprovedOrBeyond;
-
-  const selectedOffer = offers.find((o) => o.status === 'SELECTED') || offers[0];
-  const selectedTerm = selectedOffer?.terms && selectedOffer.terms[0];
+  const currentVerificationStep =
+    !verifSummary || verifSummary.kyc !== 'VERIFIED'
+      ? 1
+      : verifSummary.bank_account !== 'VERIFIED'
+      ? 2
+      : verifSummary.selfie !== 'PHOTO_APPROVED' &&
+        verifSummary.selfie !== 'PHOTO_PENDING_REVIEW' &&
+        verifSummary.selfie !== 'VERIFIED'
+      ? 3
+      : 4;
 
   if (loading) {
     return (
@@ -300,770 +375,646 @@ export const LoanApplicationForm: React.FC = () => {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#F7F5F1] text-[#14161A] flex flex-col font-sans selection:bg-[#B5652D]/20">
-      <Navbar />
+  const requestedAmountFormatted = requestedAmount
+    ? `₹${Number(requestedAmount).toLocaleString('en-IN')}`
+    : '—';
 
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
-        {/* Top Breadcrumb & Reference Header */}
-        <div className="flex items-center justify-between border-b border-[#E5E2DC] pb-4">
+  return (
+    <CustomerLayout
+      status={application?.status}
+      applicationNumber={application?.application_number}
+      requestedAmount={application?.requested_amount || requestedAmount}
+      verificationSummary={verifSummary}
+      currentVerificationStep={currentVerificationStep}
+      actionRequiredReason={actionRequiredReason}
+    >
+      <div className="space-y-6 w-full pb-16">
+        {/* Top Breadcrumb & App Identifier */}
+        <div className="flex items-center justify-between pb-3 border-b border-[#E5E2DC]">
           <Link
             to="/dashboard"
-            className="text-sm font-semibold text-[#686D76] hover:text-[#14161A] transition-colors"
+            className="text-xs font-semibold text-[#686D76] hover:text-[#14161A] transition-colors flex items-center gap-1 cursor-pointer"
           >
             ← Back to Dashboard
           </Link>
-          <span className="text-sm font-mono font-bold text-[#14161A]">
-            {application ? `#${application.application_number}` : 'New Loan Application'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold text-[#14161A]">
+              {application ? `#${application.application_number}` : 'New Loan Draft'}
+            </span>
+            {application && <StatusBadge status={application.status} size="sm" />}
+          </div>
         </div>
-
-        {/* The Signature Ledger Line Tracker */}
-        <LedgerLine status={application?.status} />
 
         {/* Global Notifications */}
         {error && (
-          <div className="p-4 rounded-xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-sm flex items-center gap-2.5">
+          <div className="p-4 rounded-2xl bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32] text-xs sm:text-sm flex items-center gap-2.5 shadow-xs">
             <span className="text-base">⚠️</span>
             <span className="font-medium">{error}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="p-4 rounded-xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-sm flex items-center gap-2.5 font-medium">
+          <div className="p-4 rounded-2xl bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] text-xs sm:text-sm flex items-center gap-2.5 font-medium shadow-xs">
             <span className="text-base">✓</span>
             <span>{successMessage}</span>
           </div>
         )}
 
-        {/* 1. APPROVAL / DISBURSEMENT MILESTONE */}
-        {isApprovedOrBeyond && disbursement && (
-          <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#1E5C4A] space-y-6 bg-white">
-            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E5E2DC] pb-4">
-              <div>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
-                  Disbursement Milestone
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
-                  {application?.status === 'DISBURSED'
-                    ? 'Your loan has been disbursed'
-                    : 'Your loan has been approved'}
-                </h2>
-                <p className="text-sm text-[#686D76] mt-0.5">
-                  {application?.status === 'DISBURSED'
-                    ? 'Settlement completed to your verified destination bank account.'
-                    : 'Credit authorization confirmed. Electronic payout processing is underway.'}
-                </p>
-              </div>
-
-              <StatusBadge status={application?.status || 'APPROVED'} size="lg" />
-            </div>
-
-            {/* Financial Summary Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
-                <span className="text-xs font-semibold text-[#686D76] uppercase block">Approved Principal</span>
-                <span className="font-mono text-xl font-bold text-[#14161A] block mt-1">
-                  ₹{Number(disbursement.approved_amount).toLocaleString('en-IN')}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
-                <span className="text-xs font-semibold text-[#686D76] uppercase block">Net Payout to Bank</span>
-                <span className="font-mono text-xl font-bold text-[#1E5C4A] block mt-1">
-                  ₹{Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
-                <span className="text-xs font-semibold text-[#686D76] uppercase block">Monthly EMI</span>
-                <span className="font-mono text-xl font-bold text-[#14161A] block mt-1">
-                  ₹{disbursement.emi ? Number(disbursement.emi).toLocaleString('en-IN') : 'N/A'}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC]">
-                <span className="text-xs font-semibold text-[#686D76] uppercase block">Tenure & Rate</span>
-                <span className="font-mono text-sm font-bold text-[#14161A] block mt-1">
-                  {disbursement.tenure_months}M @ {Number(disbursement.interest_rate).toFixed(2)}%
-                </span>
-              </div>
-            </div>
-
-            {/* Destination Bank & Settlement Record */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm pt-2">
-              <div className="p-4 rounded-xl bg-white border border-[#E5E2DC] space-y-2">
-                <span className="font-bold text-[#14161A] block text-xs uppercase tracking-wider">
-                  Destination Bank Account
-                </span>
-                <div className="space-y-1.5 text-[#686D76]">
-                  <div className="flex justify-between">
-                    <span>Bank:</span>
-                    <strong className="text-[#14161A]">{disbursement.destination_bank_name || 'Verified Bank'}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Account:</span>
-                    <strong className="text-[#14161A] font-mono">*******{disbursement.destination_account_last4 || '****'}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>IFSC Code:</span>
-                    <strong className="text-[#14161A] font-mono">{disbursement.destination_ifsc || 'N/A'}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-white border border-[#E5E2DC] space-y-2">
-                <span className="font-bold text-[#14161A] block text-xs uppercase tracking-wider">
-                  Settlement Transaction Record
-                </span>
-                <div className="space-y-1.5 text-[#686D76]">
-                  <div className="flex justify-between">
-                    <span>Disbursement Reference:</span>
-                    <strong className="text-[#B5652D] font-mono font-bold">{disbursement.disbursement_reference || 'In Progress'}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Repayment:</span>
-                    <strong className="text-[#14161A] font-mono">₹{disbursement.total_repayment ? Number(disbursement.total_repayment).toLocaleString('en-IN') : 'N/A'}</strong>
-                  </div>
-                  {disbursement.completed_at && (
-                    <div className="flex justify-between border-t border-[#E5E2DC] pt-1.5">
-                      <span>Completed:</span>
-                      <strong className="text-[#1E5C4A]">{new Date(disbursement.completed_at).toLocaleString('en-IN')}</strong>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* 2. ELIGIBILITY RESULT & TRANSPARENT REASONING */}
-        {application?.status === 'ELIGIBILITY_CHECKED' && (
-          <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#B5652D] space-y-6 bg-white">
-            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#E5E2DC] pb-4">
-              <div>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
-                  Assessment Complete
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
-                  You&apos;re eligible for a personal loan
-                </h2>
-                <p className="text-sm text-[#686D76] mt-0.5">
-                  Instant credit score: <strong className="text-[#14161A]">{eligibility?.score || '90'}/100</strong>. No hard credit inquiry was performed.
-                </p>
-              </div>
-
-              <div className="text-left sm:text-right">
-                <span className="text-xs font-semibold text-[#686D76] uppercase block">Eligible Loan Amount</span>
-                <span className="text-2xl sm:text-3xl font-bold text-[#B5652D] font-mono">
-                  ₹{Number(application.requested_amount || 500000).toLocaleString('en-IN')}
-                </span>
-              </div>
-            </div>
-
-            {/* Why you're eligible — Transparent Reasoning Box */}
-            <div className="p-5 rounded-xl bg-[#F7F5F1] border border-[#E5E2DC] space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#14161A]">
-                Why you qualify
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-[#686D76]">
-                <div className="flex items-start gap-2">
-                  <span className="text-[#1E5C4A] font-bold">✓</span>
-                  <span>Monthly income meets minimum threshold for requested principal.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-[#1E5C4A] font-bold">✓</span>
-                  <span>Debt-to-income (DTI) ratio is within safe regulatory limits.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-[#1E5C4A] font-bold">✓</span>
-                  <span>Employment stability criteria verified for requested tenure.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-[#1E5C4A] font-bold">✓</span>
-                  <span>Instant eligibility decision locked and ready for offer selection.</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action trigger for offers */}
-            {offers.length === 0 && (
-              <div className="flex justify-end">
-                <Button variant="primary" size="lg" onClick={() => loadOffers(application.id)}>
-                  View Personalized Loan Offers →
-                </Button>
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* 3. LOAN OFFER COMPARISON EXPLORER (When selecting offer) */}
-        {application?.status === 'ELIGIBILITY_CHECKED' && offers.length > 0 && (
-          <Card variant="elevated" padding="lg" className="space-y-6 bg-white">
-            <div className="border-b border-[#E5E2DC] pb-4">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                Trade-off Explorer
+        {/* ========================================================================= */}
+        {/* STAGE 1: LOAN APPLICATION (DRAFT OR NEW) */}
+        {/* ========================================================================= */}
+        {(!application || application.status === 'DRAFT') && (
+          <div className="space-y-6">
+            {/* Page Header */}
+            <div className="space-y-1">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                LOAN APPLICATION • STEP 1 OF 7
               </span>
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
-                Compare Your Personalized Loan Offers
-              </h2>
-              <p className="text-sm text-[#686D76] mt-0.5">
-                Understand the trade-off between lower monthly EMI, shorter tenure, and total repayment cost.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {offers.map((offer, idx) => {
-                const term = offer.terms && offer.terms[0];
-                const isSelected = offer.status === 'SELECTED';
-                const isRecommended = idx === 1 || offers.length === 1;
-
-                return (
-                  <div
-                    key={offer.id}
-                    className={`rounded-2xl p-5 sm:p-6 transition-all flex flex-col justify-between border ${
-                      isSelected
-                        ? 'bg-[#F9F3EE] border-[#B5652D] ring-2 ring-[#B5652D]/20 shadow-md'
-                        : isRecommended
-                        ? 'bg-white border-[#B5652D]/50 shadow-sm'
-                        : 'bg-white border-[#E5E2DC] hover:border-[#D4D0C7]'
-                    }`}
-                  >
-                    <div className="space-y-4">
-                      {/* Badge / Header */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#14161A] uppercase tracking-wider">
-                          Plan {idx + 1}
-                        </span>
-                        {isRecommended && !isSelected && (
-                          <span className="text-xs font-bold uppercase tracking-wider text-[#B5652D] bg-[#F9F3EE] border border-[#ECCBB3] px-2.5 py-0.5 rounded-full">
-                            Recommended
-                          </span>
-                        )}
-                        {isSelected && (
-                          <span className="text-xs font-bold uppercase tracking-wider text-[#1E5C4A] bg-[#E8F2EE] border border-[#C5E0D5] px-2.5 py-0.5 rounded-full">
-                            ✓ Selected
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Primary EMI metric */}
-                      <div>
-                        <span className="text-xs text-[#686D76] uppercase font-semibold block">Monthly EMI</span>
-                        <span className="text-3xl font-black text-[#14161A] font-mono mt-1 block">
-                          ₹{term ? Number(term.emi).toLocaleString('en-IN') : '0'}
-                        </span>
-                      </div>
-
-                      {/* Term Metrics */}
-                      <div className="space-y-2 text-sm border-t border-[#E5E2DC] pt-3 text-[#686D76]">
-                        <div className="flex justify-between">
-                          <span>Tenure:</span>
-                          <strong className="text-[#14161A]">{term ? `${term.tenure_months} Months` : 'N/A'}</strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Interest Rate:</span>
-                          <strong className="text-[#14161A] font-mono">{Number(offer.interest_rate).toFixed(2)}% p.a.</strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Net Payout:</span>
-                          <strong className="text-[#1E5C4A] font-mono">₹{term ? Number(term.net_disbursement).toLocaleString('en-IN') : '0'}</strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Total Repayment:</span>
-                          <strong className="text-[#14161A] font-mono">₹{term ? Number(term.total_repayment).toLocaleString('en-IN') : '0'}</strong>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-5 mt-4 border-t border-[#E5E2DC]">
-                      <Button
-                        variant={isSelected ? 'secondary' : 'primary'}
-                        size="md"
-                        className="w-full"
-                        disabled={isSelected || selectingOfferId !== null || isApprovedOrBeyond}
-                        isLoading={selectingOfferId === offer.id}
-                        onClick={() => handleSelectOffer(offer.id)}
-                      >
-                        {isSelected ? '✓ Plan Confirmed' : 'Select This Plan →'}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-
-        {/* 4. VERIFICATION PIPELINE (When Offer Selected OR when retake requested / active) */}
-        {application &&
-          (application.status === 'OFFER_SELECTED' ||
-            searchParams.get('mode') === 'retake' ||
-            searchParams.get('step') === 'photo' ||
-            verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED') && (
-            <VerificationWizard
-              applicationId={application.id}
-              initialStep={
-                searchParams.get('mode') === 'retake' ||
-                searchParams.get('step') === 'photo' ||
-                verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
-                  ? 3
-                  : undefined
-              }
-              initialMode={
-                searchParams.get('mode') === 'retake' ||
-                verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
-                  ? 'retake'
-                  : undefined
-              }
-              onVerificationComplete={async () => {
-                const updated = await fetchApplication(application.id);
-                setApplication(updated);
-                try {
-                  const updatedVerif = await fetchVerificationSummary(application.id);
-                  setVerifSummary(updatedVerif);
-                } catch {}
-              }}
-            />
-          )}
-
-        {/* 5. CUSTOMER LOAN REVIEW DOSSIER (When Under Review, Approved, or Disbursed AND not actively retaking photo) */}
-        {isUnderReviewOrBeyond &&
-          application &&
-          !(
-            searchParams.get('mode') === 'retake' ||
-            searchParams.get('step') === 'photo' ||
-            verifSummary?.selfie === 'PHOTO_RETAKE_REQUIRED'
-          ) && (
-            <div className="space-y-6">
-            {/* Section A: YOUR SELECTED LOAN (Requirement 4) */}
-            <Card variant="elevated" padding="lg" className="border-l-4 border-l-[#B5652D] bg-white space-y-5">
-              <div className="border-b border-[#E5E2DC] pb-4">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                  Confirmed Repayment Plan
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
-                  YOUR SELECTED LOAN
-                </h2>
-                <p className="text-sm text-[#686D76] mt-0.5">
-                  The terms and monthly commitment confirmed for this personal loan.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="p-4 bg-[#F9F3EE] rounded-xl border border-[#ECCBB3] md:col-span-2">
-                  <span className="text-xs text-[#9C4F1C] font-semibold uppercase block">Monthly EMI</span>
-                  <span className="font-mono font-bold text-3xl text-[#14161A] block mt-1">
-                    {disbursement?.emi
-                      ? `₹${Number(disbursement.emi).toLocaleString('en-IN')}`
-                      : selectedTerm
-                      ? `₹${Number(selectedTerm.emi).toLocaleString('en-IN')}`
-                      : 'Calculated'}
-                  </span>
-                  <span className="text-xs text-[#686D76] mt-1 block">Fixed monthly repayment</span>
-                </div>
-
-                <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
-                  <span className="text-xs text-[#686D76] font-semibold uppercase block">Loan Amount</span>
-                  <span className="font-mono font-bold text-xl text-[#14161A] block mt-1">
-                    ₹{Number(application.requested_amount || 0).toLocaleString('en-IN')}
-                  </span>
-                </div>
-
-                <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
-                  <span className="text-xs text-[#686D76] font-semibold uppercase block">Repayment Period</span>
-                  <span className="font-bold text-lg text-[#14161A] block mt-1">
-                    {disbursement?.tenure_months || selectedTerm?.tenure_months || application.requested_tenure_months || 36} Months
-                  </span>
-                </div>
-
-                <div className="p-4 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
-                  <span className="text-xs text-[#686D76] font-semibold uppercase block">Interest Rate</span>
-                  <span className="font-mono font-bold text-lg text-[#14161A] block mt-1">
-                    {disbursement?.interest_rate
-                      ? `${Number(disbursement.interest_rate).toFixed(2)}% p.a.`
-                      : selectedOffer
-                      ? `${Number(selectedOffer.interest_rate).toFixed(2)}% p.a.`
-                      : '12.00% p.a.'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-4 bg-[#E8F2EE] rounded-xl border border-[#C5E0D5] flex items-center justify-between text-sm">
-                <span className="font-semibold text-[#1E5C4A]">Amount you&apos;ll receive in bank:</span>
-                <span className="font-mono font-bold text-lg text-[#1E5C4A]">
-                  ₹{disbursement?.net_disbursement_amount
-                    ? Number(disbursement.net_disbursement_amount).toLocaleString('en-IN')
-                    : selectedTerm
-                    ? Number(selectedTerm.net_disbursement).toLocaleString('en-IN')
-                    : Number(application.requested_amount || 0).toLocaleString('en-IN')}
-                </span>
-              </div>
-            </Card>
-
-            {/* Section B: YOUR LOAN DETAILS (Requirement 3) */}
-            <Card variant="default" padding="lg" className="bg-white space-y-4">
-              <div className="border-b border-[#E5E2DC] pb-4">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#686D76]">
-                  Borrower Summary
-                </span>
-                <h3 className="text-xl sm:text-2xl font-bold text-[#14161A] font-editorial mt-1">
-                  YOUR LOAN DETAILS
-                </h3>
-                <p className="text-sm text-[#686D76] mt-0.5">
-                  Here&apos;s a summary of the information you provided.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-xs text-[#686D76] block">Loan amount</span>
-                  <strong className="text-[#14161A] font-mono text-base block mt-0.5">
-                    ₹{Number(application.requested_amount || 0).toLocaleString('en-IN')}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-xs text-[#686D76] block">Monthly income</span>
-                  <strong className="text-[#14161A] font-mono text-base block mt-0.5">
-                    ₹{Number(application.monthly_income || 0).toLocaleString('en-IN')}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-xs text-[#686D76] block">Existing monthly commitments</span>
-                  <strong className="text-[#14161A] font-mono text-base block mt-0.5">
-                    ₹{Number(application.existing_debt || 0).toLocaleString('en-IN')}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-xs text-[#686D76] block">Employment</span>
-                  <strong className="text-[#14161A] block mt-0.5">
-                    {application.employment_type === 'SALARIED'
-                      ? 'Salaried Professional'
-                      : application.employment_type === 'SELF_EMPLOYED'
-                      ? 'Self-Employed'
-                      : application.employment_type || 'Professional'}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-xs text-[#686D76] block">Employer</span>
-                  <strong className="text-[#14161A] block mt-0.5">{application.employer_name || 'N/A'}</strong>
-                </div>
-
-                <div>
-                  <span className="text-xs text-[#686D76] block">Loan purpose</span>
-                  <strong className="text-[#14161A] block mt-0.5">{application.purpose || 'Personal needs'}</strong>
-                </div>
-              </div>
-            </Card>
-
-            {/* Section C: YOUR VERIFICATION & APPLICATION UPDATES (Requirements 1 & 2) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* YOUR VERIFICATION (Requirement 2) */}
-              <Card variant="default" padding="lg" className="bg-white space-y-4">
-                <div className="border-b border-[#E5E2DC] pb-3">
-                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
-                    Completed Checks
-                  </span>
-                  <h3 className="text-lg sm:text-xl font-bold text-[#14161A] font-editorial mt-1">
-                    YOUR VERIFICATION
-                  </h3>
-                  <p className="text-xs text-[#686D76] mt-0.5">
-                    All required checks have been completed.
-                  </p>
-                </div>
-
-                <div className="space-y-2.5 text-sm">
-                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                    <span className="font-semibold text-[#14161A]">Identity verified</span>
-                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
-                  </div>
-
-                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                    <span className="font-semibold text-[#14161A]">Bank account verified</span>
-                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
-                  </div>
-
-                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                    <span className="font-semibold text-[#14161A]">Photo verification completed</span>
-                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
-                  </div>
-
-                  <div className="p-3 bg-[#F7F5F1] rounded-xl flex items-center justify-between">
-                    <span className="font-semibold text-[#14161A]">Declaration accepted</span>
-                    <span className="text-[#1E5C4A] font-bold">✓ Complete</span>
-                  </div>
-                </div>
-              </Card>
-
-              {/* APPLICATION UPDATES (Requirement 1 - Replaces Technical Audit Trail) */}
-              <Card variant="default" padding="lg" className="bg-white space-y-4">
-                <div className="border-b border-[#E5E2DC] pb-3">
-                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                    Journey Milestones
-                  </span>
-                  <h3 className="text-lg sm:text-xl font-bold text-[#14161A] font-editorial mt-1">
-                    Application updates
-                  </h3>
-                  <p className="text-xs text-[#686D76] mt-0.5">
-                    Live record of your loan progress.
-                  </p>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                    <div>
-                      <strong className="text-[#14161A] block">Application submitted</strong>
-                      <span className="text-xs text-[#686D76]">Your loan intake details were received.</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                    <div>
-                      <strong className="text-[#14161A] block">Eligibility confirmed</strong>
-                      <span className="text-xs text-[#686D76]">Borrowing limit evaluated and approved.</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                    <div>
-                      <strong className="text-[#14161A] block">Offer selected</strong>
-                      <span className="text-xs text-[#686D76]">Repayment tenure and monthly EMI locked.</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                    <div>
-                      <strong className="text-[#14161A] block">Verification completed</strong>
-                      <span className="text-xs text-[#686D76]">Identity and bank account verified.</span>
-                    </div>
-                  </div>
-
-                  {isApprovedOrBeyond && (
-                    <div className="flex items-start gap-2.5">
-                      <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                      <div>
-                        <strong className="text-[#14161A] block">Loan approved</strong>
-                        <span className="text-xs text-[#686D76]">Credit officer authorized fund payout.</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {(application.status === 'DISBURSEMENT_PROCESSING' || application.status === 'DISBURSED') && (
-                    <div className="flex items-start gap-2.5">
-                      <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                      <div>
-                        <strong className="text-[#14161A] block">Disbursement initiated</strong>
-                        <span className="text-xs text-[#686D76]">Electronic transfer sent to your bank.</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {application.status === 'DISBURSED' && (
-                    <div className="flex items-start gap-2.5">
-                      <span className="text-[#1E5C4A] font-bold text-base mt-0.5">✓</span>
-                      <div>
-                        <strong className="text-[#1E5C4A] block">Funds transferred to bank</strong>
-                        <span className="text-xs text-[#686D76]">Settlement completed successfully.</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </div>
-          </div>
-        )}
-
-        {/* 6. LOAN APPLICATION GUIDED FORM (When still Draft or Submitted) */}
-        {(!application || application.status === 'DRAFT' || application.status === 'SUBMITTED') && (
-          <Card variant="default" padding="lg" className="space-y-6 bg-white">
-            <div className="border-b border-[#E5E2DC] pb-4">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                Guided Application
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-1">
-                {isSubmittedOrHigher ? 'Application Summary' : 'Personal Loan Details'}
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial">
+                Personal Loan Application
               </h1>
-              <p className="text-sm text-[#686D76] mt-0.5">
-                {isSubmittedOrHigher
-                  ? 'Your application details have been submitted. Run eligibility evaluation below.'
-                  : 'Answer these three simple questions to receive instant loan eligibility.'}
+              <p className="text-xs sm:text-sm text-[#686D76] leading-relaxed">
+                Tell us about your borrowing requirements and employment profile to check your pre-approved borrowing limit.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Theme 1: Loan Requirement */}
-              <div className="space-y-4">
-                <h2 className="text-sm font-bold text-[#14161A] uppercase tracking-wider border-b border-[#E5E2DC] pb-2">
-                  1. How much would you like to borrow?
-                </h2>
+              {/* SECTION 1: Loan Requirements */}
+              <Card variant="default" padding="lg" className="bg-white border border-[#E5E2DC] shadow-xs space-y-5 rounded-2xl">
+                <div className="border-b border-[#EAE7E1] pb-3">
+                  <span className="text-xs font-bold font-mono text-[#B5652D] uppercase tracking-wider block">
+                    1. Loan Requirements
+                  </span>
+                  <h3 className="text-base font-bold text-[#14161A]">
+                    Desired Loan Amount & Tenure
+                  </h3>
+                  <p className="text-xs text-[#686D76] mt-0.5">
+                    Select how much you would like to borrow and your preferred repayment period.
+                  </p>
+                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <Input
-                    label="Requested Amount (₹)"
-                    type="number"
+                    label="Requested Loan Amount"
                     required
+                    type="number"
                     min={10000}
-                    max={5000000}
+                    max={1000000}
+                    step={1000}
                     value={requestedAmount}
-                    onChange={(e) => setRequestedAmount(e.target.value)}
-                    placeholder="e.g. 500000"
-                    hint="₹10,000 to ₹50,00,000"
-                    disabled={isSubmittedOrHigher}
+                    onChange={(e) => {
+                      setRequestedAmount(e.target.value);
+                      if (!touched.requestedAmount) setTouched({ ...touched, requestedAmount: true });
+                    }}
+                    onBlur={() => setTouched({ ...touched, requestedAmount: true })}
+                    placeholder="Enter amount"
+                    leftAddon="₹"
+                    helperText="Enter an amount between ₹10,000 and ₹10,00,000"
+                    error={getAmountError()}
                   />
 
                   <Select
-                    label="Preferred Tenure"
-                    options={TENURE_OPTIONS.map((t) => ({ value: t, label: `${t} Months (${t / 12} Years)` }))}
-                    value={requestedTenureMonths}
-                    onChange={(e) => setRequestedTenureMonths(Number(e.target.value))}
-                    hint="Repayment duration"
-                    disabled={isSubmittedOrHigher}
+                    label="Requested Loan Tenure"
+                    required
+                    value={String(requestedTenureMonths)}
+                    onChange={(e) => setRequestedTenureMonths(parseInt(e.target.value, 10))}
+                    options={TENURE_OPTIONS.map((t) => ({
+                      value: String(t),
+                      label: `${t} Months (${(t / 12).toFixed(1)} Years)`,
+                    }))}
+                    helperText="Select repayment duration"
                   />
                 </div>
 
-                <Select
-                  label="What will you use the loan for?"
-                  options={PURPOSE_OPTIONS.map((p) => ({ value: p, label: p }))}
-                  value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
-                  disabled={isSubmittedOrHigher}
-                />
-
-                {purpose === 'Other personal needs' && (
-                  <Input
-                    label="Specify Loan Purpose"
-                    value={customPurpose}
-                    onChange={(e) => setCustomPurpose(e.target.value)}
-                    placeholder="Briefly describe what you'll use the loan for"
-                    disabled={isSubmittedOrHigher}
+                <div className="space-y-4">
+                  <Select
+                    label="Loan Purpose"
+                    required
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                    options={PURPOSE_OPTIONS.map((p) => ({ value: p, label: p }))}
+                    helperText="Helps us tailor relevant repayment options"
                   />
-                )}
-              </div>
 
-              {/* Theme 2: Income & Employment */}
-              <div className="space-y-4">
-                <h2 className="text-sm font-bold text-[#14161A] uppercase tracking-wider border-b border-[#E5E2DC] pb-2">
-                  2. Income & Employment Details
-                </h2>
+                  {purpose === 'Other personal needs' && (
+                    <Input
+                      label="Specify Purpose"
+                      required
+                      value={customPurpose}
+                      onChange={(e) => setCustomPurpose(e.target.value)}
+                      placeholder="Describe your specific loan requirement"
+                    />
+                  )}
+                </div>
+              </Card>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* SECTION 2: Income & Employment */}
+              <Card variant="default" padding="lg" className="bg-white border border-[#E5E2DC] shadow-xs space-y-5 rounded-2xl">
+                <div className="border-b border-[#EAE7E1] pb-3">
+                  <span className="text-xs font-bold font-mono text-[#B5652D] uppercase tracking-wider block">
+                    2. Income & Employment
+                  </span>
+                  <h3 className="text-base font-bold text-[#14161A]">
+                    Employment Background & Income
+                  </h3>
+                  <p className="text-xs text-[#686D76] mt-0.5">
+                    Provide your professional details to establish your monthly earning capacity.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <Select
                     label="Employment Type"
-                    options={EMPLOYMENT_OPTIONS}
+                    required
                     value={employmentType}
                     onChange={(e) => setEmploymentType(e.target.value)}
-                    disabled={isSubmittedOrHigher}
+                    options={EMPLOYMENT_OPTIONS}
+                    helperText="Primary occupation category"
                   />
 
                   <Input
-                    label="What's your net monthly income? (₹)"
-                    type="number"
+                    label="Gross Monthly Income"
                     required
+                    type="number"
                     min={5000}
+                    step={500}
                     value={monthlyIncome}
-                    onChange={(e) => setMonthlyIncome(e.target.value)}
-                    placeholder="e.g. 75000"
-                    hint="After-tax take home"
-                    disabled={isSubmittedOrHigher}
+                    onChange={(e) => {
+                      setMonthlyIncome(e.target.value);
+                      if (!touched.monthlyIncome) setTouched({ ...touched, monthlyIncome: true });
+                    }}
+                    onBlur={() => setTouched({ ...touched, monthlyIncome: true })}
+                    placeholder="Enter monthly income"
+                    leftAddon="₹"
+                    helperText="Your monthly income after regular deductions."
+                    error={getIncomeError()}
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Progressive Disclosure based on Employment Type */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
                   <Input
-                    label="Where do you work?"
+                    label={
+                      employmentType === 'SALARIED'
+                        ? 'Employer / Company Name'
+                        : 'Business / Enterprise Name'
+                    }
+                    required
                     value={employerName}
-                    onChange={(e) => setEmployerName(e.target.value)}
-                    placeholder="Company or practice name"
-                    hint="Used to verify income stability"
-                    disabled={isSubmittedOrHigher}
+                    onChange={(e) => {
+                      setEmployerName(e.target.value);
+                      if (!touched.employerName) setTouched({ ...touched, employerName: true });
+                    }}
+                    onBlur={() => setTouched({ ...touched, employerName: true })}
+                    placeholder={
+                      employmentType === 'SALARIED'
+                        ? 'Enter employer name'
+                        : 'Enter enterprise name'
+                    }
+                    error={getEmployerError()}
                   />
 
                   <Input
-                    label="Designation / Role"
+                    label={
+                      employmentType === 'SALARIED'
+                        ? 'Job Title / Designation'
+                        : 'Profession / Business Role'
+                    }
+                    required
                     value={designation}
-                    onChange={(e) => setDesignation(e.target.value)}
-                    placeholder="e.g. Software Engineer"
-                    disabled={isSubmittedOrHigher}
+                    onChange={(e) => {
+                      setDesignation(e.target.value);
+                      if (!touched.designation) setTouched({ ...touched, designation: true });
+                    }}
+                    onBlur={() => setTouched({ ...touched, designation: true })}
+                    placeholder={
+                      employmentType === 'SALARIED'
+                        ? 'Enter your designation'
+                        : 'Enter your profession'
+                    }
+                    error={getDesignationError()}
                   />
                 </div>
-              </div>
+              </Card>
 
-              {/* Theme 3: Existing Obligations */}
-              <div className="space-y-4">
-                <h2 className="text-sm font-bold text-[#14161A] uppercase tracking-wider border-b border-[#E5E2DC] pb-2">
-                  3. What do you currently pay toward other loans?
-                </h2>
+              {/* SECTION 3: Existing Financial Commitments */}
+              <Card variant="default" padding="lg" className="bg-white border border-[#E5E2DC] shadow-xs space-y-4 rounded-2xl">
+                <div className="border-b border-[#EAE7E1] pb-3">
+                  <span className="text-xs font-bold font-mono text-[#B5652D] uppercase tracking-wider block">
+                    3. Existing Commitments
+                  </span>
+                  <h3 className="text-base font-bold text-[#14161A]">
+                    Existing Monthly EMI Obligations
+                  </h3>
+                  <p className="text-xs text-[#686D76] mt-0.5">
+                    Tell us about your current monthly financial commitments to estimate your repayment capacity.
+                  </p>
+                </div>
 
                 <Input
-                  label="Total Existing Monthly EMIs (₹)"
+                  label="Total Existing Monthly EMI Obligations"
                   type="number"
                   min={0}
+                  step={500}
                   value={existingDebt}
                   onChange={(e) => setExistingDebt(e.target.value)}
-                  placeholder="0 if none"
-                  hint="Used to calculate your safe debt-to-income (DTI) ratio"
-                  disabled={isSubmittedOrHigher}
+                  placeholder="0"
+                  leftAddon="₹"
+                  helperText="Include ongoing credit card EMIs, personal loans, or vehicle loans (enter 0 if none)."
                 />
-              </div>
+              </Card>
 
-              {/* Form Action Controls */}
-              {!isSubmittedOrHigher ? (
-                <div className="pt-4 border-t border-[#E5E2DC] flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <span className="text-sm text-[#686D76]">
-                    You can pause here — your draft is safely saved.
-                  </span>
+              {/* SECTION 4: Live Application Summary Card */}
+              <div className="p-4 sm:p-5 bg-[#FAF8F5] border border-[#E5E2DC] rounded-2xl shadow-2xs space-y-3">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#686D76] block">
+                  Application Summary Preview
+                </span>
 
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="md"
-                      className="flex-1 sm:flex-none"
-                      isLoading={saving}
-                      onClick={handleSaveDraft}
-                    >
-                      Save Draft
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      size="md"
-                      className="flex-1 sm:flex-none"
-                      isLoading={submitting}
-                    >
-                      Submit Loan Application →
-                    </Button>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <span className="text-[#8A8D93] block">Loan Amount</span>
+                    <strong className="text-sm font-mono font-bold text-[#14161A] block mt-0.5">
+                      {requestedAmountFormatted}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#8A8D93] block">Tenure</span>
+                    <strong className="text-sm font-bold text-[#14161A] block mt-0.5">
+                      {requestedTenureMonths} Months
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#8A8D93] block">Purpose</span>
+                    <strong className="text-xs font-semibold text-[#14161A] block mt-0.5 truncate">
+                      {purpose === 'Other personal needs' ? customPurpose || 'Personal' : purpose}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#8A8D93] block">Gross Monthly Income</span>
+                    <strong className="text-sm font-mono font-bold text-[#1E5C4A] block mt-0.5">
+                      {monthlyIncome ? `₹${Number(monthlyIncome).toLocaleString('en-IN')}` : '—'}
+                    </strong>
                   </div>
                 </div>
-              ) : application?.status === 'SUBMITTED' ? (
-                <div className="pt-4 border-t border-[#E5E2DC] flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <span className="text-sm text-[#686D76]">
-                    Application submitted. Assess your borrowing capacity now.
-                  </span>
+              </div>
+
+              {/* Sticky Action Footer */}
+              <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md p-4 rounded-2xl border border-[#E5E2DC] shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-xs text-[#686D76] hidden sm:block">
+                  <span>Your information is encrypted & saved securely.</span>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                   <Button
                     type="button"
+                    variant="outline"
+                    size="md"
+                    onClick={handleSaveDraft}
+                    isLoading={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    Save as Draft
+                  </Button>
+
+                  <Button
+                    type="submit"
                     variant="primary"
                     size="lg"
-                    isLoading={evaluating}
-                    onClick={handleCheckEligibility}
+                    isLoading={submitting}
+                    className="w-full sm:w-auto bg-[#B5652D] hover:bg-[#9C4F1C] text-white shadow-xs font-bold"
                   >
-                    Check Loan Eligibility →
+                    Continue to Eligibility Assessment →
                   </Button>
                 </div>
-              ) : null}
+              </div>
             </form>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STAGE 2: ELIGIBILITY ASSESSMENT */}
+        {/* ========================================================================= */}
+        {application?.status === 'SUBMITTED' && (
+          <Card variant="elevated" padding="lg" className="bg-white space-y-6 rounded-2xl border border-[#E5E2DC]">
+            <div className="border-b border-[#E5E2DC] pb-4">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                Stage 2 of 7
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                Eligibility Assessment
+              </h1>
+              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                Your loan profile is ready. Run the instant automated financial assessment to receive pre-approved plans.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                <span className="text-[#686D76] block">Requested Amount</span>
+                <strong className="text-base font-mono text-[#14161A] block mt-0.5">
+                  ₹{Number(application.requested_amount).toLocaleString('en-IN')}
+                </strong>
+              </div>
+              <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                <span className="text-[#686D76] block">Tenure</span>
+                <strong className="text-base font-bold text-[#14161A] block mt-0.5">
+                  {application.requested_tenure_months} Months
+                </strong>
+              </div>
+              <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                <span className="text-[#686D76] block">Declared Income</span>
+                <strong className="text-base font-mono text-[#14161A] block mt-0.5">
+                  ₹{Number(application.monthly_income).toLocaleString('en-IN')}/mo
+                </strong>
+              </div>
+              <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
+                <span className="text-[#686D76] block">Existing EMI</span>
+                <strong className="text-base font-mono text-[#14161A] block mt-0.5">
+                  ₹{Number(application.existing_debt || 0).toLocaleString('en-IN')}/mo
+                </strong>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-[#E5E2DC] flex justify-end">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleEvaluateEligibility}
+                isLoading={evaluating}
+                className="w-full sm:w-auto bg-[#B5652D] hover:bg-[#9C4F1C] text-white"
+              >
+                Run Credit Assessment & View Offers →
+              </Button>
+            </div>
           </Card>
         )}
-      </main>
-    </div>
+
+        {/* ========================================================================= */}
+        {/* STAGE 3: OFFER SELECTION */}
+        {/* ========================================================================= */}
+        {application?.status === 'ELIGIBILITY_CHECKED' && (
+          <div className="space-y-6">
+            <div className="border-b border-[#E5E2DC] pb-4">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
+                Stage 3 of 7 • Pre-Approved
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                Select Your Repayment Plan
+              </h1>
+              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                Choose the repayment tenure and monthly EMI schedule that fits your financial goals.
+              </p>
+            </div>
+
+            {offers.length === 0 ? (
+              <div className="p-8 bg-white border border-[#E5E2DC] rounded-2xl text-center space-y-3">
+                <p className="text-xs text-[#686D76]">Loading curated loan offers…</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadOffers(application.id)}
+                >
+                  Refresh Offers
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {offers.map((offer, idx) => {
+                  const term = offer.terms?.[0];
+                  return (
+                    <Card
+                      key={offer.id}
+                      variant="elevated"
+                      padding="lg"
+                      className={`bg-white space-y-4 relative flex flex-col justify-between border-2 rounded-2xl ${
+                        idx === 1
+                          ? 'border-[#B5652D] shadow-md ring-2 ring-[#B5652D]/10'
+                          : 'border-[#E5E2DC]'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                          <span
+                            className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                              idx === 1
+                                ? 'bg-[#FAF3EE] text-[#B5652D] border border-[#F3D7C4]'
+                                : 'bg-[#F2EFE9] text-[#686D76]'
+                            }`}
+                          >
+                            {idx === 0 ? 'Short Term' : idx === 1 ? 'Recommended' : 'Lowest EMI'}
+                          </span>
+                          <span className="text-xs text-[#8A8D93] font-mono">
+                            {term ? term.tenure_months : 36} Mo
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-xs text-[#686D76] block">Monthly Repayment</span>
+                          <span className="text-2xl font-bold font-mono text-[#14161A] block">
+                            ₹{term ? Number(term.emi).toLocaleString('en-IN') : '—'}
+                          </span>
+                          <span className="text-[11px] text-[#8A8D93]">per month</span>
+                        </div>
+
+                        <div className="pt-2 border-t border-[#EAE7E1] space-y-1 text-xs text-[#686D76]">
+                          <div className="flex justify-between">
+                            <span>Principal:</span>
+                            <strong className="text-[#14161A] font-mono">
+                              ₹{Number(offer.principal).toLocaleString('en-IN')}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Interest Rate:</span>
+                            <strong className="text-[#14161A] font-mono">
+                              {Number(offer.interest_rate).toFixed(2)}% p.a.
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Total Interest:</span>
+                            <strong className="text-[#14161A] font-mono">
+                              ₹{term ? Number(term.total_interest).toLocaleString('en-IN') : '—'}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-[#EAE7E1]">
+                        <Button
+                          variant={idx === 1 ? 'primary' : 'outline'}
+                          size="md"
+                          className="w-full"
+                          isLoading={selectingOfferId === offer.id}
+                          onClick={() => handleSelectOffer(offer.id)}
+                        >
+                          Select This Plan →
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STAGE 4: VERIFICATION WIZARD */}
+        {/* ========================================================================= */}
+        {application?.status === 'OFFER_SELECTED' && (
+          <div className="space-y-6">
+            <div className="border-b border-[#E5E2DC] pb-4">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                Stage 4 of 7
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                Identity & Bank Verification
+              </h1>
+              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                Complete your identity document upload, bank account verification, and in-browser live selfie.
+              </p>
+            </div>
+
+            {hasPhotoRetake && (
+              <div className="p-4 bg-[#FAF3F2] border-2 border-[#8C3A32] rounded-2xl flex items-start gap-3 shadow-xs">
+                <span className="text-2xl mt-0.5">⚠️</span>
+                <div className="space-y-1">
+                  <span className="text-xs font-bold text-[#8C3A32] uppercase tracking-wider block">
+                    Action Required: Live Photo Retake
+                  </span>
+                  <p className="text-xs text-[#686D76]">
+                    Credit Officer Remark: &ldquo;{actionRequiredReason}&rdquo;
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <VerificationWizard
+              applicationId={application.id}
+              initialMode={verificationInitialMode}
+              onVerificationComplete={async () => {
+                const refreshed = await fetchApplication(application.id);
+                setApplication(refreshed);
+                setSuccessMessage('All verification steps submitted for Underwriting review.');
+              }}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STAGE 5: UNDERWRITING REVIEW */}
+        {/* ========================================================================= */}
+        {application?.status === 'UNDER_REVIEW' && (
+          <div className="space-y-6">
+            {hasPhotoRetake ? (
+              <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#8C3A32] bg-white space-y-4 rounded-2xl">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl mt-0.5">⚠️</span>
+                  <div className="space-y-1">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#8C3A32]">
+                      Action Required
+                    </span>
+                    <h2 className="text-xl font-bold text-[#14161A] font-editorial">
+                      Your live selfie needs to be retaken
+                    </h2>
+                    <p className="text-xs text-[#686D76]">
+                      Reason from Credit Officer:{' '}
+                      <span className="font-semibold text-[#8C3A32]">
+                        &quot;{actionRequiredReason}&quot;
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <VerificationWizard
+                    applicationId={application.id}
+                    initialMode="retake"
+                    onVerificationComplete={async () => {
+                      const refreshed = await fetchApplication(application.id);
+                      setApplication(refreshed);
+                      setSuccessMessage('New photo submitted! Our team is reviewing your application.');
+                    }}
+                  />
+                </div>
+              </Card>
+            ) : (
+              <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#B5652D] bg-white space-y-4 text-center py-10 rounded-2xl">
+                <div className="w-14 h-14 rounded-full bg-[#FAF3EE] border border-[#F3D7C4] text-[#B5652D] flex items-center justify-center text-2xl mx-auto shadow-xs">
+                  ⚖️
+                </div>
+                <div className="space-y-1 max-w-md mx-auto">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                    Stage 5 of 7 • Case in Progress
+                  </span>
+                  <h2 className="text-2xl font-bold text-[#14161A] font-editorial">
+                    Underwriting Review in Progress
+                  </h2>
+                  <p className="text-xs sm:text-sm text-[#686D76]">
+                    Your verified identity documents and live selfie are currently under manual review by our Credit Officers. Decisions are typically completed within 15 minutes.
+                  </p>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STAGES 6 & 7: APPROVAL & DISBURSEMENT */}
+        {/* ========================================================================= */}
+        {(application?.status === 'APPROVED' ||
+          application?.status === 'DISBURSEMENT_PROCESSING' ||
+          application?.status === 'DISBURSED') && (
+          <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#1E5C4A] bg-white space-y-6 rounded-2xl">
+            <div className="border-b border-[#E5E2DC] pb-4">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
+                {application.status === 'DISBURSED'
+                  ? 'Stage 7 of 7 • Disbursed'
+                  : 'Stage 6 of 7 • Approved & Sanctioned'}
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                {application.status === 'DISBURSED'
+                  ? 'Loan Disbursed to Your Bank'
+                  : 'Loan Sanction & Authorization'}
+              </h1>
+              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                {application.status === 'DISBURSED'
+                  ? 'Your funds have been electronically transferred to your verified bank account.'
+                  : 'Your loan has been officially approved. Electronic fund transfer is in progress.'}
+              </p>
+            </div>
+
+            {disbursement && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]">
+                  <span className="text-[#686D76] block">Sanctioned Amount</span>
+                  <strong className="text-base font-mono text-[#14161A] block mt-0.5">
+                    ₹{Number(disbursement.approved_amount || 0).toLocaleString('en-IN')}
+                  </strong>
+                </div>
+                <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]">
+                  <span className="text-[#686D76] block">Net Payout</span>
+                  <strong className="text-base font-mono text-[#1E5C4A] block mt-0.5">
+                    ₹{Number(disbursement.net_disbursement_amount || disbursement.approved_amount || 0).toLocaleString('en-IN')}
+                  </strong>
+                </div>
+                <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]">
+                  <span className="text-[#686D76] block">Monthly EMI</span>
+                  <strong className="text-base font-mono text-[#14161A] block mt-0.5">
+                    ₹{disbursement.emi ? Number(disbursement.emi).toLocaleString('en-IN') : '—'}
+                  </strong>
+                </div>
+                <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#EAE7E1]">
+                  <span className="text-[#686D76] block">Tenure / Rate</span>
+                  <strong className="text-base font-mono text-[#14161A] block mt-0.5">
+                    {disbursement.tenure_months}M @ {Number(disbursement.interest_rate || 0).toFixed(2)}%
+                  </strong>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+    </CustomerLayout>
   );
 };
 

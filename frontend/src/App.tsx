@@ -5,6 +5,10 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import VerifyEmail from './pages/VerifyEmail';
 import LoanApplicationForm from './pages/LoanApplicationForm';
+import CustomerApplications from './pages/CustomerApplications';
+import CustomerVerification from './pages/CustomerVerification';
+import CustomerDocuments from './pages/CustomerDocuments';
+import CurrentLoanRedirect from './pages/CurrentLoanRedirect';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminApplicationReview } from './pages/admin/AdminApplicationReview';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -18,6 +22,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
+        
+        {/* Customer Portal Routes */}
         <Route
           path="/dashboard"
           element={
@@ -26,6 +32,40 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/applications"
+          element={
+            <ProtectedRoute>
+              <CustomerApplications />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/current-loan"
+          element={
+            <ProtectedRoute>
+              <CurrentLoanRedirect />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/verification"
+          element={
+            <ProtectedRoute>
+              <CustomerVerification />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents"
+          element={
+            <ProtectedRoute>
+              <CustomerDocuments />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Loan Flow Routes */}
         <Route
           path="/loans/new"
           element={

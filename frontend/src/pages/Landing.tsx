@@ -118,16 +118,16 @@ export const Landing: React.FC = () => {
                 </div>
                 <input
                   type="range"
-                  min={50000}
-                  max={2500000}
-                  step={25000}
+                  min={10000}
+                  max={1000000}
+                  step={10000}
                   value={calcAmount}
                   onChange={(e) => setCalcAmount(Number(e.target.value))}
                   className="w-full h-2 bg-[#F2EFE9] rounded-lg appearance-none cursor-pointer accent-[#B5652D]"
                 />
                 <div className="flex justify-between text-xs text-[#8A8D93] font-mono">
-                  <span>₹50,000</span>
-                  <span>₹25,00,000</span>
+                  <span>₹10,000</span>
+                  <span>₹10,00,000</span>
                 </div>
               </div>
 

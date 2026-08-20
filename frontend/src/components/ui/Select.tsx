@@ -9,22 +9,23 @@ export interface SelectOption {
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   hint?: string;
+  helperText?: string;
   error?: string;
   options: SelectOption[];
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, hint, error, options, className = '', id, required, ...props }, ref) => {
+  ({ label, hint, helperText, error, options, className = '', id, required, ...props }, ref) => {
     const selectId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
     return (
       <div className="w-full space-y-1.5 text-left">
         {label && (
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor={selectId} className="block text-sm font-semibold text-[#14161A]">
+            <label htmlFor={selectId} className="block text-xs sm:text-sm font-semibold text-[#14161A]">
               {label} {required && <span className="text-[#B5652D] font-bold">*</span>}
             </label>
-            {hint && <span className="text-xs text-[#686D76]">{hint}</span>}
+            {hint && <span className="text-xs text-[#8A8D93]">{hint}</span>}
           </div>
         )}
 
@@ -33,9 +34,9 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={selectId}
             required={required}
-            className={`w-full appearance-none bg-white border rounded-xl py-2.5 px-3.5 pr-10 text-sm sm:text-base text-[#14161A] transition-colors focus:outline-none focus:ring-2 cursor-pointer ${
+            className={`w-full appearance-none bg-white border rounded-xl py-3 px-3.5 pr-10 text-sm sm:text-base text-[#14161A] transition-all focus:outline-none focus:ring-2 cursor-pointer min-h-[48px] ${
               error
-                ? 'border-[#8C3A32] focus:border-[#8C3A32] focus:ring-[#8C3A32]/10 bg-[#FBEFEC]/30'
+                ? 'border-[#8C3A32] focus:border-[#8C3A32] focus:ring-[#8C3A32]/15 bg-[#FBEFEC]/30'
                 : 'border-[#D4D0C7] focus:border-[#B5652D] focus:ring-[#B5652D]/15'
             } ${className}`}
             {...props}
@@ -55,15 +56,21 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           </div>
         </div>
 
-        {error && (
+        {error ? (
           <p className="text-xs text-[#8C3A32] flex items-center gap-1 font-medium mt-1">
-            <span>•</span>
+            <span>⚠️</span>
             <span>{error}</span>
           </p>
-        )}
+        ) : helperText ? (
+          <p className="text-xs text-[#686D76] mt-1 leading-relaxed">
+            {helperText}
+          </p>
+        ) : null}
       </div>
     );
   }
 );
 
 Select.displayName = 'Select';
+
+export default Select;

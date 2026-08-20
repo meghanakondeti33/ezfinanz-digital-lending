@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import MIN_LOAN_AMOUNT, MAX_LOAN_AMOUNT
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.loan import ApplicationStatus, LoanApplication
 from app.models.user import User
@@ -177,8 +178,10 @@ def submit_loan_application(
 
     # Validate required fields for submission
     missing_fields = []
-    if not application.requested_amount or application.requested_amount <= 0:
-        missing_fields.append("requested_amount (must be greater than 0)")
+    if not application.requested_amount or application.requested_amount < MIN_LOAN_AMOUNT or application.requested_amount > MAX_LOAN_AMOUNT:
+        missing_fields.append(
+            f"requested_amount (must be between ₹{MIN_LOAN_AMOUNT:,.2f} and ₹{MAX_LOAN_AMOUNT:,.2f})"
+        )
     if not application.purpose or not application.purpose.strip():
         missing_fields.append("purpose")
     if not application.monthly_income or application.monthly_income <= 0:

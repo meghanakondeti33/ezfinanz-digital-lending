@@ -17,6 +17,7 @@ from app.models.eligibility import EligibilityCheck, EligibilityStatus
 from app.models.loan import ApplicationStatus, LoanApplication
 from app.models.offer import LoanOffer, OfferStatus
 from app.models.loan_term import LoanTerm
+from app.core.config import MIN_LOAN_AMOUNT, MAX_LOAN_AMOUNT
 from app.models.user import User
 from app.services.financial_service import calculate_offer_financials, quantize_currency, quantize_ratio
 from app.services.loan_service import get_loan_application
@@ -24,10 +25,8 @@ from app.services.loan_service import get_loan_application
 # ==============================================================================
 # Configurable Underwriting Rules
 # ==============================================================================
-MIN_MONTHLY_INCOME = Decimal("25000.00")
+MIN_MONTHLY_INCOME = Decimal("15000.00")
 MAX_DTI_RATIO = Decimal("0.50")  # 50% max DTI
-MIN_LOAN_AMOUNT = Decimal("25000.00")
-MAX_LOAN_AMOUNT = Decimal("5000000.00")
 MAX_LOAN_TO_INCOME_MULTIPLIER = Decimal("30.0")  # Max loan amount <= 30x monthly income
 MIN_TENURE_MONTHS = 6
 MAX_TENURE_MONTHS = 60

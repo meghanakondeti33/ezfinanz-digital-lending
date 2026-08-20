@@ -55,3 +55,16 @@ export async function reviewAdminSelfie(
   );
   return response.data;
 }
+
+export async function reviewAdminKycDocument(
+  applicationId: string,
+  action: 'APPROVE' | 'REJECT',
+  reason?: string
+): Promise<any> {
+  const response = await apiClient.post(
+    `/admin/applications/${applicationId}/kyc/review`,
+    { action, reason }
+  );
+  return response.data;
+}
+
