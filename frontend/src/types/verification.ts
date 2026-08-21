@@ -93,10 +93,18 @@ export interface DeclarationSubmitPayload {
   declaration_version?: string;
 }
 
+export type KYCVerificationStatus =
+  | 'NOT_STARTED'
+  | 'PENDING_REVIEW'
+  | 'DOCUMENT_REQUIRED'
+  | 'REPLACEMENT_REQUIRED'
+  | 'VERIFIED'
+  | 'FAILED';
+
 export interface VerificationSummary {
   application_id: string;
   status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
-  kyc: 'NOT_STARTED' | 'VERIFIED' | 'FAILED';
+  kyc: KYCVerificationStatus;
   bank_account: 'NOT_STARTED' | 'VERIFIED' | 'FAILED';
   selfie:
     | 'NOT_STARTED'

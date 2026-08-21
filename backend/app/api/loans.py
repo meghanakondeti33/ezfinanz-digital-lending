@@ -25,6 +25,7 @@ from app.services.disbursement_service import get_disbursement_details
 from app.services.eligibility_service import run_and_persist_eligibility
 from app.services.loan_service import (
     create_loan_application,
+    delete_loan_application,
     get_loan_application,
     list_loan_applications,
     submit_loan_application,
@@ -132,6 +133,23 @@ def submit_application(
     """
     application = submit_loan_application(db, current_user, application_id)
     return LoanApplicationResponse.model_validate(application)
+
+
+@router.delete(
+    "/{application_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete a loan application draft",
+)
+def delete_application(
+    application_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.CUSTOMER)),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete an editable loan application belonging to the authenticated customer.
+    Rejects deletion if application is under review, approved, or disbursed.
+    """
+    return delete_loan_application(db, current_user, application_id)
 
 
 # ==============================================================================

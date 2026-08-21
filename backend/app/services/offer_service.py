@@ -23,6 +23,7 @@ def get_application_offers(
     """
     Retrieve all generated loan offers for an application.
     Enforces ownership by the authenticated customer.
+    If application is ELIGIBILITY_CHECKED or OFFER_SELECTED but offers are missing, generates them.
     """
     application = get_loan_application(db, user, application_id)
 
@@ -33,6 +34,20 @@ def get_application_offers(
         .order_by(LoanOffer.interest_rate.asc())
     )
     offers = list(db.execute(stmt).scalars().all())
+
+    if not offers and application.status in (ApplicationStatus.ELIGIBILITY_CHECKED, ApplicationStatus.OFFER_SELECTED):
+        from app.models.eligibility import EligibilityCheck, EligibilityStatus
+        latest_check = (
+            db.execute(
+                select(EligibilityCheck)
+                .where(EligibilityCheck.application_id == application.id)
+                .order_by(EligibilityCheck.calculated_at.desc())
+            ).scalars().first()
+        )
+        if latest_check and latest_check.status == EligibilityStatus.ELIGIBLE:
+            from app.services.eligibility_service import generate_loan_offers_for_application
+            generate_loan_offers_for_application(db, application)
+            offers = list(db.execute(stmt).scalars().all())
 
     return offers
 

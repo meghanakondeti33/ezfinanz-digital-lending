@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom'
 import {
   checkEligibility,
   createApplication,
+  deleteApplication,
   fetchApplication,
   fetchOffers,
   selectOffer,
@@ -61,12 +62,21 @@ export const LoanApplicationForm: React.FC = () => {
   const [disbursement, setDisbursement] = useState<DisbursementDetail | null>(null);
   const [verifSummary, setVerifSummary] = useState<VerificationSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(!isNew);
+  const [loadingOffers, setLoadingOffers] = useState<boolean>(false);
+  const [offersError, setOffersError] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [selectingOfferId, setSelectingOfferId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Active Stage view override for Back / Edit navigation
+  const [activeStage, setActiveStage] = useState<
+    'application' | 'eligibility' | 'offers' | 'verification' | 'underwriting' | 'approval' | 'disbursement'
+  >('application');
 
   // Form state
   const [requestedAmount, setRequestedAmount] = useState<string>('');
@@ -86,6 +96,19 @@ export const LoanApplicationForm: React.FC = () => {
   const modeParam = searchParams.get('mode');
   const verificationInitialMode: 'retake' | 'capture' | undefined =
     modeParam === 'retake' ? 'retake' : modeParam === 'capture' ? 'capture' : undefined;
+
+  const getStageFromStatus = (
+    status?: string
+  ): 'application' | 'eligibility' | 'offers' | 'verification' | 'underwriting' | 'approval' | 'disbursement' => {
+    if (!status || status === 'DRAFT') return 'application';
+    if (status === 'SUBMITTED') return 'eligibility';
+    if (status === 'ELIGIBILITY_CHECKED') return 'offers';
+    if (status === 'OFFER_SELECTED') return 'verification';
+    if (status === 'UNDER_REVIEW') return 'underwriting';
+    if (status === 'APPROVED') return 'approval';
+    if (status === 'DISBURSEMENT_PROCESSING' || status === 'DISBURSED') return 'disbursement';
+    return 'application';
+  };
 
   useEffect(() => {
     if (!isNew && id) {
@@ -116,6 +139,9 @@ export const LoanApplicationForm: React.FC = () => {
       setDesignation(data.designation || '');
       setExistingDebt(data.existing_debt ? String(data.existing_debt) : '0');
       setRequestedTenureMonths(data.requested_tenure_months || 36);
+
+      const naturalStage = getStageFromStatus(data.status);
+      setActiveStage(naturalStage);
 
       // Load verification summary if offer is selected or under review
       try {
@@ -158,11 +184,18 @@ export const LoanApplicationForm: React.FC = () => {
   };
 
   const loadOffers = async (appId: string) => {
+    setLoadingOffers(true);
+    setOffersError(null);
     try {
       const data = await fetchOffers(appId);
-      setOffers(data.offers);
-    } catch {
-      // Non-critical if no offers yet
+      setOffers(data.offers || []);
+      if (!data.offers || data.offers.length === 0) {
+        setOffersError('No pre-approved offers could be generated for this request.');
+      }
+    } catch (err: any) {
+      setOffersError(extractErrorMessage(err, 'Unable to load repayment options.'));
+    } finally {
+      setLoadingOffers(false);
     }
   };
 
@@ -190,7 +223,7 @@ export const LoanApplicationForm: React.FC = () => {
     if (!requestedAmount) return 'Please enter your requested loan amount.';
     const val = parseFloat(requestedAmount);
     if (isNaN(val) || val < 10000) return 'Minimum loan amount is ₹10,000.';
-    if (val > 1000000) return 'Maximum loan amount is ₹10,00,000.';
+    if (val > 1000000) return 'Maximum loan amount is ₹10,000,000.';
     return undefined;
   };
 
@@ -293,7 +326,9 @@ export const LoanApplicationForm: React.FC = () => {
 
       const submitted = await submitApplication(currentApp.id);
       setApplication(submitted);
-      setSuccessMessage('✓ Application submitted! Ready for credit eligibility assessment.');
+      setOffers([]); // Clear stale offers so fresh ones are computed
+      setActiveStage('eligibility');
+      setSuccessMessage('✓ Application details saved! Ready for credit assessment.');
 
       if (isNew) {
         navigate(`/loans/${submitted.id}`, { replace: true });
@@ -317,6 +352,7 @@ export const LoanApplicationForm: React.FC = () => {
       setApplication(refreshed);
 
       if (refreshed.status === 'ELIGIBILITY_CHECKED') {
+        setActiveStage('offers');
         await loadOffers(application.id);
         setSuccessMessage('✓ Congratulations! You are eligible for our pre-approved loan options.');
       } else if (refreshed.status === 'REJECTED') {
@@ -338,12 +374,37 @@ export const LoanApplicationForm: React.FC = () => {
       await selectOffer(application.id, offerId);
       const refreshed = await fetchApplication(application.id);
       setApplication(refreshed);
+      setActiveStage('verification');
       setSuccessMessage('✓ Plan selected! Proceeding to identity verification.');
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Failed to select loan plan.'));
     } finally {
       setSelectingOfferId(null);
     }
+  };
+
+  const handleDeleteApplication = async () => {
+    if (!application) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteApplication(application.id);
+      setShowDeleteModal(false);
+      navigate('/dashboard', {
+        state: { notification: '✓ Application deleted successfully.' },
+        replace: true,
+      });
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Failed to delete application.'));
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const isDeletable = (status?: string): boolean => {
+    if (!status) return true;
+    return ['DRAFT', 'SUBMITTED', 'ELIGIBILITY_CHECKED', 'OFFER_SELECTED'].includes(status);
   };
 
   // Derive verification progress
@@ -353,8 +414,12 @@ export const LoanApplicationForm: React.FC = () => {
       'Please submit a clearer photo with your face fully visible.'
     : null;
 
+  const isKycComplete =
+    verifSummary?.kyc === 'VERIFIED' ||
+    verifSummary?.kyc === 'PENDING_REVIEW';
+
   const currentVerificationStep =
-    !verifSummary || verifSummary.kyc !== 'VERIFIED'
+    !verifSummary || !isKycComplete
       ? 1
       : verifSummary.bank_account !== 'VERIFIED'
       ? 2
@@ -379,29 +444,52 @@ export const LoanApplicationForm: React.FC = () => {
     ? `₹${Number(requestedAmount).toLocaleString('en-IN')}`
     : '—';
 
+  const isExistingApplication = !!application && application.status !== 'DRAFT';
+
   return (
     <CustomerLayout
       status={application?.status}
       applicationNumber={application?.application_number}
       requestedAmount={application?.requested_amount || requestedAmount}
+      activeStageId={activeStage}
+      onNavigateStage={(st) => setActiveStage(st)}
       verificationSummary={verifSummary}
       currentVerificationStep={currentVerificationStep}
       actionRequiredReason={actionRequiredReason}
     >
       <div className="space-y-6 w-full pb-16">
-        {/* Top Breadcrumb & App Identifier */}
-        <div className="flex items-center justify-between pb-3 border-b border-[#E5E2DC]">
-          <Link
-            to="/dashboard"
-            className="text-xs font-semibold text-[#686D76] hover:text-[#14161A] transition-colors flex items-center gap-1 cursor-pointer"
-          >
-            ← Back to Dashboard
-          </Link>
-          <div className="flex items-center gap-2">
+        {/* Top Breadcrumb & App Identifier & Delete Action */}
+        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-[#E5E2DC] gap-2">
+          <div className="flex items-center gap-3">
+            <Link
+              to="/dashboard"
+              className="text-xs font-semibold text-[#686D76] hover:text-[#14161A] transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              ← Back to Dashboard
+            </Link>
+            {isExistingApplication && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-[#FAF3EE] text-[#B5652D] border border-[#F3D7C4]">
+                Stage: {activeStage.toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2.5">
             <span className="text-xs font-mono font-bold text-[#14161A]">
               {application ? `#${application.application_number}` : 'New Loan Draft'}
             </span>
             {application && <StatusBadge status={application.status} size="sm" />}
+
+            {application && isDeletable(application.status) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDeleteModal(true)}
+                className="text-xs text-[#8C3A32] border-[#F0D0CB] hover:bg-[#FBEFEC] hover:border-[#8C3A32]"
+              >
+                🗑️ Delete
+              </Button>
+            )}
           </div>
         </div>
 
@@ -421,22 +509,61 @@ export const LoanApplicationForm: React.FC = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* STAGE 1: LOAN APPLICATION (DRAFT OR NEW) */}
+        {/* STAGE 1: LOAN APPLICATION / EDIT APPLICATION */}
         {/* ========================================================================= */}
-        {(!application || application.status === 'DRAFT') && (
+        {activeStage === 'application' && (
           <div className="space-y-6">
             {/* Page Header */}
-            <div className="space-y-1">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                LOAN APPLICATION • STEP 1 OF 7
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial">
-                Personal Loan Application
-              </h1>
-              <p className="text-xs sm:text-sm text-[#686D76] leading-relaxed">
-                Tell us about your borrowing requirements and employment profile to check your pre-approved borrowing limit.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E5E2DC] pb-4 gap-3">
+              <div>
+                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                  LOAN APPLICATION • STEP 1 OF 7
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                  {isExistingApplication ? 'Edit Loan Application' : 'Personal Loan Application'}
+                </h1>
+                <p className="text-xs sm:text-sm text-[#686D76] leading-relaxed mt-1">
+                  {isExistingApplication
+                    ? 'Update your borrowing requirements or income profile. Changes will recalculate your credit eligibility and refresh available loan plans.'
+                    : 'Tell us about your borrowing requirements and employment profile to check your pre-approved borrowing limit.'}
+                </p>
+              </div>
+
+              {isExistingApplication && (
+                <div className="flex items-center gap-2">
+                  {application.status === 'ELIGIBILITY_CHECKED' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveStage('offers')}
+                      className="text-xs"
+                    >
+                      View Current Offers →
+                    </Button>
+                  )}
+                  {application.status === 'SUBMITTED' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveStage('eligibility')}
+                      className="text-xs"
+                    >
+                      Back to Assessment →
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
+
+            {isExistingApplication && (
+              <div className="p-4 bg-[#FAF3EE] border border-[#F3D7C4] rounded-2xl flex items-start gap-3 text-xs text-[#686D76]">
+                <span className="text-lg">ℹ️</span>
+                <div>
+                  <strong className="text-[#14161A] block font-semibold">Editing Application Details</strong>
+                  <span>Saving modifications to amount, income, tenure, or obligations will automatically update your application and recalculate your repayment offers.</span>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* SECTION 1: Loan Requirements */}
@@ -551,7 +678,6 @@ export const LoanApplicationForm: React.FC = () => {
                   />
                 </div>
 
-                {/* Progressive Disclosure based on Employment Type */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
                   <Input
                     label={
@@ -597,7 +723,7 @@ export const LoanApplicationForm: React.FC = () => {
                 </div>
               </Card>
 
-              {/* SECTION 3: Existing Financial Commitments */}
+              {/* SECTION 3: Existing Commitments */}
               <Card variant="default" padding="lg" className="bg-white border border-[#E5E2DC] shadow-xs space-y-4 rounded-2xl">
                 <div className="border-b border-[#EAE7E1] pb-3">
                   <span className="text-xs font-bold font-mono text-[#B5652D] uppercase tracking-wider block">
@@ -683,7 +809,7 @@ export const LoanApplicationForm: React.FC = () => {
                     isLoading={submitting}
                     className="w-full sm:w-auto bg-[#B5652D] hover:bg-[#9C4F1C] text-white shadow-xs font-bold"
                   >
-                    Continue to Eligibility Assessment →
+                    {isExistingApplication ? 'Save & Continue to Eligibility →' : 'Continue to Eligibility Assessment →'}
                   </Button>
                 </div>
               </div>
@@ -694,54 +820,74 @@ export const LoanApplicationForm: React.FC = () => {
         {/* ========================================================================= */}
         {/* STAGE 2: ELIGIBILITY ASSESSMENT */}
         {/* ========================================================================= */}
-        {application?.status === 'SUBMITTED' && (
+        {activeStage === 'eligibility' && (
           <Card variant="elevated" padding="lg" className="bg-white space-y-6 rounded-2xl border border-[#E5E2DC]">
-            <div className="border-b border-[#E5E2DC] pb-4">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                Stage 2 of 7
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
-                Eligibility Assessment
-              </h1>
-              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
-                Your loan profile is ready. Run the instant automated financial assessment to receive pre-approved plans.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E5E2DC] pb-4 gap-3">
+              <div>
+                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                  Stage 2 of 7
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                  Eligibility Assessment
+                </h1>
+                <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                  Your loan profile is ready. Run the automated financial assessment to verify your credit capacity and generate pre-approved plans.
+                </p>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveStage('application')}
+                className="text-xs self-start sm:self-auto"
+              >
+                ← Edit Application Details
+              </Button>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
                 <span className="text-[#686D76] block">Requested Amount</span>
                 <strong className="text-base font-mono text-[#14161A] block mt-0.5">
-                  ₹{Number(application.requested_amount).toLocaleString('en-IN')}
+                  ₹{Number(application?.requested_amount || requestedAmount || 0).toLocaleString('en-IN')}
                 </strong>
               </div>
               <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
                 <span className="text-[#686D76] block">Tenure</span>
                 <strong className="text-base font-bold text-[#14161A] block mt-0.5">
-                  {application.requested_tenure_months} Months
+                  {application?.requested_tenure_months || requestedTenureMonths} Months
                 </strong>
               </div>
               <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
                 <span className="text-[#686D76] block">Declared Income</span>
                 <strong className="text-base font-mono text-[#14161A] block mt-0.5">
-                  ₹{Number(application.monthly_income).toLocaleString('en-IN')}/mo
+                  ₹{Number(application?.monthly_income || monthlyIncome || 0).toLocaleString('en-IN')}/mo
                 </strong>
               </div>
               <div className="p-3 bg-[#F7F5F1] rounded-xl border border-[#E5E2DC]">
                 <span className="text-[#686D76] block">Existing EMI</span>
                 <strong className="text-base font-mono text-[#14161A] block mt-0.5">
-                  ₹{Number(application.existing_debt || 0).toLocaleString('en-IN')}/mo
+                  ₹{Number(application?.existing_debt || existingDebt || 0).toLocaleString('en-IN')}/mo
                 </strong>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#E5E2DC] flex justify-end">
+            <div className="pt-4 border-t border-[#E5E2DC] flex items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setActiveStage('application')}
+                className="text-xs"
+              >
+                ← Back to Application
+              </Button>
+
               <Button
                 variant="primary"
                 size="lg"
                 onClick={handleEvaluateEligibility}
                 isLoading={evaluating}
-                className="w-full sm:w-auto bg-[#B5652D] hover:bg-[#9C4F1C] text-white"
+                className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white font-bold"
               >
                 Run Credit Assessment & View Offers →
               </Button>
@@ -752,30 +898,96 @@ export const LoanApplicationForm: React.FC = () => {
         {/* ========================================================================= */}
         {/* STAGE 3: OFFER SELECTION */}
         {/* ========================================================================= */}
-        {application?.status === 'ELIGIBILITY_CHECKED' && (
+        {activeStage === 'offers' && (
           <div className="space-y-6">
-            <div className="border-b border-[#E5E2DC] pb-4">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
-                Stage 3 of 7 • Pre-Approved
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
-                Select Your Repayment Plan
-              </h1>
-              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
-                Choose the repayment tenure and monthly EMI schedule that fits your financial goals.
-              </p>
-            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E5E2DC] pb-4 gap-3">
+              <div>
+                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
+                  Stage 3 of 7 • Pre-Approved
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                  Select Your Repayment Plan
+                </h1>
+                <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                  Choose the repayment tenure and monthly EMI schedule that best fits your financial goals.
+                </p>
+              </div>
 
-            {offers.length === 0 ? (
-              <div className="p-8 bg-white border border-[#E5E2DC] rounded-2xl text-center space-y-3">
-                <p className="text-xs text-[#686D76]">Loading curated loan offers…</p>
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => loadOffers(application.id)}
+                  onClick={() => setActiveStage('eligibility')}
+                  className="text-xs"
                 >
-                  Refresh Offers
+                  ← Back to Eligibility
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveStage('application')}
+                  className="text-xs"
+                >
+                  ✏️ Edit Application
+                </Button>
+              </div>
+            </div>
+
+            {loadingOffers ? (
+              <div className="p-12 bg-white border border-[#E5E2DC] rounded-2xl text-center space-y-3 shadow-xs">
+                <div className="animate-spin h-8 w-8 border-3 border-[#B5652D] border-t-transparent rounded-full mx-auto" />
+                <h3 className="text-base font-bold text-[#14161A]">Calculating your repayment options…</h3>
+                <p className="text-xs text-[#686D76] max-w-md mx-auto">
+                  Structuring personalized repayment plans and interest rates for your requested loan of ₹{Number(application?.requested_amount || requestedAmount || 0).toLocaleString('en-IN')}.
+                </p>
+              </div>
+            ) : offersError ? (
+              <div className="p-8 bg-white border border-[#F0D0CB] rounded-2xl text-center space-y-4 shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-[#FBEFEC] text-[#8C3A32] flex items-center justify-center text-xl mx-auto font-bold">
+                  ⚠️
+                </div>
+                <div className="space-y-1 max-w-md mx-auto">
+                  <h3 className="text-base font-bold text-[#14161A]">Unable to load repayment options.</h3>
+                  <p className="text-xs text-[#8C3A32]">{offersError}</p>
+                </div>
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveStage('application')}
+                  >
+                    Edit Application
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => application && loadOffers(application.id)}
+                    className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white"
+                  >
+                    🔄 Retry
+                  </Button>
+                </div>
+              </div>
+            ) : offers.length === 0 ? (
+              <div className="p-8 bg-white border border-[#E5E2DC] rounded-2xl text-center space-y-4 shadow-xs">
+                <p className="text-sm font-medium text-[#686D76]">No active loan offers available for this application.</p>
+                <div className="flex items-center justify-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveStage('application')}
+                  >
+                    ← Edit Loan Amount
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => application && loadOffers(application.id)}
+                    className="bg-[#B5652D] hover:bg-[#9C4F1C] text-white"
+                  >
+                    🔄 Refresh Offers
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -786,7 +998,7 @@ export const LoanApplicationForm: React.FC = () => {
                       key={offer.id}
                       variant="elevated"
                       padding="lg"
-                      className={`bg-white space-y-4 relative flex flex-col justify-between border-2 rounded-2xl ${
+                      className={`bg-white space-y-4 relative flex flex-col justify-between border-2 rounded-2xl transition-shadow hover:shadow-md ${
                         idx === 1
                           ? 'border-[#B5652D] shadow-md ring-2 ring-[#B5652D]/10'
                           : 'border-[#E5E2DC]'
@@ -801,9 +1013,9 @@ export const LoanApplicationForm: React.FC = () => {
                                 : 'bg-[#F2EFE9] text-[#686D76]'
                             }`}
                           >
-                            {idx === 0 ? 'Short Term' : idx === 1 ? 'Recommended' : 'Lowest EMI'}
+                            {idx === 0 ? 'Standard Plan' : idx === 1 ? 'Recommended' : 'Fast Payoff'}
                           </span>
-                          <span className="text-xs text-[#8A8D93] font-mono">
+                          <span className="text-xs text-[#8A8D93] font-mono font-semibold">
                             {term ? term.tenure_months : 36} Mo
                           </span>
                         </div>
@@ -816,9 +1028,9 @@ export const LoanApplicationForm: React.FC = () => {
                           <span className="text-[11px] text-[#8A8D93]">per month</span>
                         </div>
 
-                        <div className="pt-2 border-t border-[#EAE7E1] space-y-1 text-xs text-[#686D76]">
+                        <div className="pt-2 border-t border-[#EAE7E1] space-y-1.5 text-xs text-[#686D76]">
                           <div className="flex justify-between">
-                            <span>Principal:</span>
+                            <span>Loan Amount (Principal):</span>
                             <strong className="text-[#14161A] font-mono">
                               ₹{Number(offer.principal).toLocaleString('en-IN')}
                             </strong>
@@ -830,9 +1042,21 @@ export const LoanApplicationForm: React.FC = () => {
                             </strong>
                           </div>
                           <div className="flex justify-between">
-                            <span>Total Interest:</span>
+                            <span>Tenure:</span>
+                            <strong className="text-[#14161A]">
+                              {term ? term.tenure_months : 36} Months
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Total Repayment:</span>
                             <strong className="text-[#14161A] font-mono">
-                              ₹{term ? Number(term.total_interest).toLocaleString('en-IN') : '—'}
+                              ₹{term ? Number(term.total_repayment).toLocaleString('en-IN') : '—'}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Processing Fee:</span>
+                            <strong className="text-[#14161A] font-mono">
+                              ₹{Number(offer.processing_fee).toLocaleString('en-IN')}
                             </strong>
                           </div>
                         </div>
@@ -842,7 +1066,7 @@ export const LoanApplicationForm: React.FC = () => {
                         <Button
                           variant={idx === 1 ? 'primary' : 'outline'}
                           size="md"
-                          className="w-full"
+                          className="w-full font-bold"
                           isLoading={selectingOfferId === offer.id}
                           onClick={() => handleSelectOffer(offer.id)}
                         >
@@ -860,18 +1084,31 @@ export const LoanApplicationForm: React.FC = () => {
         {/* ========================================================================= */}
         {/* STAGE 4: VERIFICATION WIZARD */}
         {/* ========================================================================= */}
-        {application?.status === 'OFFER_SELECTED' && (
+        {activeStage === 'verification' && application && (
           <div className="space-y-6">
-            <div className="border-b border-[#E5E2DC] pb-4">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
-                Stage 4 of 7
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
-                Identity & Bank Verification
-              </h1>
-              <p className="text-xs sm:text-sm text-[#686D76] mt-1">
-                Complete your identity document upload, bank account verification, and in-browser live selfie.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E5E2DC] pb-4 gap-3">
+              <div>
+                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#B5652D]">
+                  Stage 4 of 7
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-bold text-[#14161A] font-editorial mt-0.5">
+                  Identity & Bank Verification
+                </h1>
+                <p className="text-xs sm:text-sm text-[#686D76] mt-1">
+                  Complete your identity document upload, bank account verification, and in-browser live selfie.
+                </p>
+              </div>
+
+              {application.status === 'OFFER_SELECTED' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveStage('offers')}
+                  className="text-xs self-start sm:self-auto"
+                >
+                  ← Back to Offer Selection
+                </Button>
+              )}
             </div>
 
             {hasPhotoRetake && (
@@ -894,6 +1131,7 @@ export const LoanApplicationForm: React.FC = () => {
               onVerificationComplete={async () => {
                 const refreshed = await fetchApplication(application.id);
                 setApplication(refreshed);
+                setActiveStage(getStageFromStatus(refreshed.status));
                 setSuccessMessage('All verification steps submitted for Underwriting review.');
               }}
             />
@@ -903,7 +1141,7 @@ export const LoanApplicationForm: React.FC = () => {
         {/* ========================================================================= */}
         {/* STAGE 5: UNDERWRITING REVIEW */}
         {/* ========================================================================= */}
-        {application?.status === 'UNDER_REVIEW' && (
+        {activeStage === 'underwriting' && application && (
           <div className="space-y-6">
             {hasPhotoRetake ? (
               <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#8C3A32] bg-white space-y-4 rounded-2xl">
@@ -932,6 +1170,7 @@ export const LoanApplicationForm: React.FC = () => {
                     onVerificationComplete={async () => {
                       const refreshed = await fetchApplication(application.id);
                       setApplication(refreshed);
+                      setActiveStage(getStageFromStatus(refreshed.status));
                       setSuccessMessage('New photo submitted! Our team is reviewing your application.');
                     }}
                   />
@@ -961,9 +1200,7 @@ export const LoanApplicationForm: React.FC = () => {
         {/* ========================================================================= */}
         {/* STAGES 6 & 7: APPROVAL & DISBURSEMENT */}
         {/* ========================================================================= */}
-        {(application?.status === 'APPROVED' ||
-          application?.status === 'DISBURSEMENT_PROCESSING' ||
-          application?.status === 'DISBURSED') && (
+        {(activeStage === 'approval' || activeStage === 'disbursement') && application && (
           <Card variant="elevated" padding="lg" className="border-t-4 border-t-[#1E5C4A] bg-white space-y-6 rounded-2xl">
             <div className="border-b border-[#E5E2DC] pb-4">
               <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#1E5C4A]">
@@ -1012,6 +1249,52 @@ export const LoanApplicationForm: React.FC = () => {
               </div>
             )}
           </Card>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && application && (
+          <div
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !deleting) setShowDeleteModal(false);
+            }}
+          >
+            <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl space-y-4 border border-[#E5E2DC]">
+              <div className="flex items-center gap-3 text-[#8C3A32]">
+                <div className="w-10 h-10 rounded-full bg-[#FBEFEC] flex items-center justify-center text-xl font-bold shrink-0">
+                  🗑️
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-[#14161A]">Delete this loan application?</h3>
+                  <span className="text-xs text-[#8A8D93] font-mono">#{application.application_number}</span>
+                </div>
+              </div>
+
+              <p className="text-xs sm:text-sm text-[#686D76] leading-relaxed">
+                This will permanently delete this loan application and remove all associated draft assessment data. This action cannot be undone.
+              </p>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <Button
+                  variant="outline"
+                  size="md"
+                  disabled={deleting}
+                  onClick={() => setShowDeleteModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
+                  isLoading={deleting}
+                  onClick={handleDeleteApplication}
+                  className="bg-[#8C3A32] hover:bg-[#702B24] text-white font-bold"
+                >
+                  Delete Application
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </CustomerLayout>

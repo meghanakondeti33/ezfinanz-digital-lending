@@ -96,8 +96,8 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
       const summ = await fetchVerificationSummary(applicationId);
       setSummary(summ);
 
-      // Load specific details if verified
-      if (summ.kyc === 'VERIFIED') {
+      // Load specific details if verified or submitted
+      if (summ.kyc !== 'NOT_STARTED') {
         try {
           const k = await fetchKYC(applicationId);
           setKycData(k);
@@ -144,12 +144,16 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
         summ.selfie === 'PHOTO_APPROVED' ||
         summ.selfie === 'VERIFIED';
       const isSelfieRetakeRequired = summ.selfie === 'PHOTO_RETAKE_REQUIRED';
+      const isKycDone =
+        summ.kyc === 'VERIFIED' ||
+        summ.kyc === 'PENDING_REVIEW' ||
+        (summ.kyc !== 'NOT_STARTED' && summ.kyc !== 'DOCUMENT_REQUIRED' && summ.kyc !== 'REPLACEMENT_REQUIRED');
 
       if (initialStep) {
         setActiveStep(initialStep);
       } else if (initialMode === 'retake' || isSelfieRetakeRequired) {
         setActiveStep(3);
-      } else if (summ.kyc !== 'VERIFIED') {
+      } else if (!isKycDone) {
         setActiveStep(1);
       } else if (summ.bank_account !== 'VERIFIED') {
         setActiveStep(2);
@@ -263,7 +267,7 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   // Step 4: Handle Declaration Acceptance
   const handleDeclarationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadedDocInfo) {
+    if (!uploadedDocInfo && summary?.kyc !== 'PENDING_REVIEW' && summary?.kyc !== 'VERIFIED') {
       setError('Please upload your identity document before continuing.');
       setActiveStep(1);
       return;
@@ -304,7 +308,14 @@ export const VerificationWizard: React.FC<VerificationWizardProps> = ({
   }
 
   const steps = [
-    { num: 1, title: 'Identity (KYC)', done: summary?.kyc === 'VERIFIED' },
+    {
+      num: 1,
+      title: 'Identity (KYC)',
+      done:
+        summary?.kyc === 'VERIFIED' ||
+        summary?.kyc === 'PENDING_REVIEW' ||
+        (!!kycData && !!uploadedDocInfo && uploadedDocInfo.status !== 'KYC_REJECTED'),
+    },
     { num: 2, title: 'Bank Account', done: summary?.bank_account === 'VERIFIED' },
     {
       num: 3,

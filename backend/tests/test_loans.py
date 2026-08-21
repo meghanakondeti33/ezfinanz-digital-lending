@@ -125,8 +125,8 @@ def test_customer_can_update_draft(client: TestClient, customer_headers: dict[st
     assert updated_data["status"] == "DRAFT"
 
 
-def test_customer_cannot_update_submitted_application(client: TestClient, customer_headers: dict[str, str]):
-    """Verify modifying a SUBMITTED application returns 409 Conflict."""
+def test_customer_can_update_submitted_application(client: TestClient, customer_headers: dict[str, str]):
+    """Verify modifying an editable SUBMITTED application updates values."""
     # 1. Create and submit application
     payload = {
         "requested_amount": 200000.00,
@@ -142,14 +142,82 @@ def test_customer_cannot_update_submitted_application(client: TestClient, custom
     assert submit_res.status_code == 200
     assert submit_res.json()["status"] == "SUBMITTED"
 
-    # 2. Try to update submitted application
+    # 2. Update editable application
     patch_res = client.patch(
         f"/api/v1/loans/applications/{app_id}",
-        json={"requested_amount": 999999.00},
+        json={"requested_amount": 300000.00},
+        headers=customer_headers,
+    )
+    assert patch_res.status_code == 200
+    assert Decimal(str(patch_res.json()["requested_amount"])) == Decimal("300000.00")
+
+
+def test_customer_cannot_update_under_review_application(
+    client: TestClient, customer_headers: dict[str, str], db_session: Session
+):
+    """Verify modifying an application in UNDER_REVIEW state returns 409 Conflict."""
+    payload = {
+        "requested_amount": 200000.00,
+        "purpose": "Education",
+        "monthly_income": 50000.00,
+        "employment_type": "SALARIED",
+        "requested_tenure_months": 12,
+    }
+    create_res = client.post("/api/v1/loans/applications", json=payload, headers=customer_headers)
+    app_id = uuid.UUID(create_res.json()["id"])
+
+    # Move application to UNDER_REVIEW
+    app = db_session.get(LoanApplication, app_id)
+    app.status = ApplicationStatus.UNDER_REVIEW
+    db_session.commit()
+
+    patch_res = client.patch(
+        f"/api/v1/loans/applications/{app_id}",
+        json={"requested_amount": 500000.00},
         headers=customer_headers,
     )
     assert patch_res.status_code == 409
     assert "Cannot modify" in patch_res.json()["error"]["message"]
+
+
+def test_customer_can_delete_draft_application(
+    client: TestClient, customer_headers: dict[str, str]
+):
+    """Verify customer can delete an editable draft application."""
+    create_res = client.post(
+        "/api/v1/loans/applications",
+        json={"requested_amount": 100000.00},
+        headers=customer_headers,
+    )
+    app_id = create_res.json()["id"]
+
+    del_res = client.delete(f"/api/v1/loans/applications/{app_id}", headers=customer_headers)
+    assert del_res.status_code == 200
+    assert del_res.json()["message"] == "Loan application deleted successfully."
+
+    # Verify 404 after deletion
+    get_res = client.get(f"/api/v1/loans/applications/{app_id}", headers=customer_headers)
+    assert get_res.status_code == 404
+
+
+def test_customer_cannot_delete_under_review_application(
+    client: TestClient, customer_headers: dict[str, str], db_session: Session
+):
+    """Verify customer cannot delete an application in UNDER_REVIEW state."""
+    create_res = client.post(
+        "/api/v1/loans/applications",
+        json={"requested_amount": 100000.00},
+        headers=customer_headers,
+    )
+    app_id = uuid.UUID(create_res.json()["id"])
+
+    app = db_session.get(LoanApplication, app_id)
+    app.status = ApplicationStatus.UNDER_REVIEW
+    db_session.commit()
+
+    del_res = client.delete(f"/api/v1/loans/applications/{app_id}", headers=customer_headers)
+    assert del_res.status_code == 409
+    assert "Cannot delete" in del_res.json()["error"]["message"]
 
 
 # ==============================================================================

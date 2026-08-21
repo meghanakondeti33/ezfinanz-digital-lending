@@ -148,16 +148,21 @@ def generate_loan_offers_for_application(
     2. Low EMI / Flexible (Extended tenure, +1% rate, standard fee)
     3. Fast Payoff / Low Interest (Accelerated tenure, -1% rate, reduced fee)
     """
-    # If offers already exist for this application, return existing
+    # If offers already exist for this application with matching principal, return existing
     existing_offers = list(
         db.execute(
             select(LoanOffer).where(LoanOffer.application_id == application.id)
         ).scalars().all()
     )
-    if existing_offers:
+    principal = quantize_currency(Decimal(str(application.requested_amount)))
+    if existing_offers and all(o.principal == principal for o in existing_offers):
         return existing_offers
 
-    principal = quantize_currency(Decimal(str(application.requested_amount)))
+    # Otherwise delete stale offers
+    for off in existing_offers:
+        db.delete(off)
+    db.flush()
+
     base_tenure = application.requested_tenure_months or 36
 
     packages = [

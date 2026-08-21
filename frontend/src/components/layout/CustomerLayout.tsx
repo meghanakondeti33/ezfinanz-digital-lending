@@ -15,6 +15,7 @@ export interface CustomerLayoutProps {
   applicationNumber?: string;
   requestedAmount?: number | string | null;
   activeStageId?: LoanStageId;
+  onNavigateStage?: (stageId: LoanStageId) => void;
   verificationSummary?: VerificationSummary | null;
   currentVerificationStep?: number;
   actionRequiredReason?: string | null;
@@ -31,6 +32,7 @@ export const CustomerLayout: React.FC<CustomerLayoutProps> = ({
   applicationNumber,
   requestedAmount,
   activeStageId,
+  onNavigateStage,
   verificationSummary,
   currentVerificationStep = 1,
   actionRequiredReason,
@@ -124,6 +126,7 @@ export const CustomerLayout: React.FC<CustomerLayoutProps> = ({
                   applicationNumber={applicationNumber}
                   requestedAmount={requestedAmount}
                   activeStageId={activeStageId}
+                  onNavigateStage={onNavigateStage}
                   verificationSummary={verificationSummary}
                   currentVerificationStep={currentVerificationStep}
                   actionRequiredReason={actionRequiredReason}
@@ -177,6 +180,10 @@ export const CustomerLayout: React.FC<CustomerLayoutProps> = ({
                     applicationNumber={applicationNumber}
                     requestedAmount={requestedAmount}
                     activeStageId={activeStageId}
+                    onNavigateStage={(st) => {
+                      if (onNavigateStage) onNavigateStage(st);
+                      setMobileSidebarOpen(false);
+                    }}
                     verificationSummary={verificationSummary}
                     currentVerificationStep={currentVerificationStep}
                     actionRequiredReason={actionRequiredReason}

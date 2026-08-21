@@ -183,7 +183,8 @@ def submit_kyc(
         existing_kyc.pincode = data.pincode
         existing_kyc.id_type = data.id_type
         existing_kyc.id_number_hash = id_hash
-        existing_kyc.document_storage_key = data.document_storage_key
+        if data.document_storage_key is not None:
+            existing_kyc.document_storage_key = data.document_storage_key
         kyc_record = existing_kyc
     else:
         kyc_record = KYCDetail(
@@ -930,10 +931,14 @@ def submit_declaration(
 
     # Verify KYC identity document is uploaded
     kyc_chk = db.execute(select(KYCDetail).where(KYCDetail.user_id == user.id)).scalar_one_or_none()
-    if not kyc_chk or not kyc_chk.document_storage_key:
+    if not kyc_chk or not (kyc_chk.document_storage_key or kyc_chk.document_filename):
         raise ValidationError("Please upload your required KYC identity document before continuing.")
     if kyc_chk.document_status == "KYC_REJECTED":
         raise ValidationError("Your KYC identity document was rejected. Please upload a replacement document before continuing.")
+    if not kyc_chk.document_storage_key and kyc_chk.document_filename:
+        kyc_chk.document_storage_key = f"kyc_{application.id}_{uuid.uuid4().hex[:8]}.pdf"
+        db.add(kyc_chk)
+        db.flush()
 
     # Verify Live Photo is submitted
     selfie_chk = db.execute(select(SelfieVerification).where(SelfieVerification.application_id == application.id)).scalar_one_or_none()
@@ -1030,11 +1035,11 @@ def get_verification_summary(
         has_kyc_doc = False
     elif kyc.document_status in ("KYC_VERIFIED", "VERIFIED", "APPROVED"):
         kyc_status = "VERIFIED"
-        has_kyc_doc = bool(kyc.document_storage_key)
+        has_kyc_doc = bool(kyc.document_storage_key or kyc.document_filename)
     elif kyc.document_status == "KYC_REJECTED":
         kyc_status = "REPLACEMENT_REQUIRED"
-        has_kyc_doc = bool(kyc.document_storage_key)
-    elif kyc.document_storage_key:
+        has_kyc_doc = bool(kyc.document_storage_key or kyc.document_filename)
+    elif kyc.document_storage_key or kyc.document_filename:
         kyc_status = "PENDING_REVIEW"
         has_kyc_doc = True
     else:

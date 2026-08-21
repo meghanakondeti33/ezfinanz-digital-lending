@@ -122,6 +122,8 @@ export const LoanJourneySidebar: React.FC<LoanJourneySidebarProps> = ({
   status,
   applicationNumber,
   requestedAmount,
+  activeStageId,
+  onNavigateStage,
   verificationSummary,
   currentVerificationStep = 1,
   actionRequiredReason,
@@ -168,15 +170,23 @@ export const LoanJourneySidebar: React.FC<LoanJourneySidebarProps> = ({
         <nav aria-label="Loan Journey Stages" className="space-y-1.5">
           {LOAN_STAGES.map((stage) => {
             const state = getStageState(stage.id, status, verificationSummary);
-            const isCurrent = state === 'current';
             const isCompleted = state === 'completed';
             const isActionRequired = state === 'action_required';
             const isRejected = state === 'rejected';
+            const isCurrent = activeStageId ? activeStageId === stage.id : state === 'current';
+            const isNavigable = isCompleted || isCurrent;
 
             return (
               <div key={stage.id} className="relative">
-                <div
-                  className={`group flex items-start gap-3 p-2.5 rounded-xl transition-all ${
+                <button
+                  type="button"
+                  disabled={!isNavigable || !onNavigateStage}
+                  onClick={() => {
+                    if (isNavigable && onNavigateStage) {
+                      onNavigateStage(stage.id);
+                    }
+                  }}
+                  className={`w-full text-left group flex items-start gap-3 p-2.5 rounded-xl transition-all ${
                     isCurrent
                       ? 'bg-[#FAF3EE] border border-[#F3D7C4] text-[#14161A] shadow-xs'
                       : isActionRequired
@@ -184,13 +194,13 @@ export const LoanJourneySidebar: React.FC<LoanJourneySidebarProps> = ({
                       : isRejected
                       ? 'bg-[#FBEFEC] border border-[#F0D0CB] text-[#8C3A32]'
                       : isCompleted
-                      ? 'text-[#14161A] hover:bg-[#F7F5F1]'
-                      : 'text-[#8A8D93] opacity-80'
+                      ? 'text-[#14161A] hover:bg-[#F7F5F1] cursor-pointer'
+                      : 'text-[#8A8D93] opacity-80 cursor-not-allowed'
                   }`}
                 >
                   {/* Step Indicator Icon */}
                   <div className="shrink-0 mt-0.5">
-                    {isCompleted ? (
+                    {isCompleted && !isCurrent ? (
                       <div className="w-6 h-6 rounded-full bg-[#E8F2EE] border border-[#C5E0D5] text-[#1E5C4A] flex items-center justify-center text-xs font-bold shadow-xs">
                         ✓
                       </div>
@@ -243,7 +253,7 @@ export const LoanJourneySidebar: React.FC<LoanJourneySidebarProps> = ({
                       )}
                     </div>
 
-                    <span className="text-[11px] text-[#8A8D93] block truncate">
+                    <span className="text-[11px] text-[#686D76] block truncate">
                       {stage.shortDesc}
                     </span>
 
@@ -292,7 +302,7 @@ export const LoanJourneySidebar: React.FC<LoanJourneySidebarProps> = ({
                       </div>
                     )}
                   </div>
-                </div>
+                </button>
               </div>
             );
           })}

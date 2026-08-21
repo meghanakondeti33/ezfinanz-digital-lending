@@ -131,21 +131,53 @@ def update_loan_draft(
     data: LoanApplicationUpdate,
 ) -> LoanApplication:
     """
-    Update an existing loan application draft.
-    Strictly forbids modifications if the application has already been submitted.
+    Update an existing loan application draft or editable application.
+    Allows modifications in DRAFT, SUBMITTED, ELIGIBILITY_CHECKED, and OFFER_SELECTED states.
+    If financial or eligibility fields change, invalidates existing offers and eligibility checks.
     """
     application = get_loan_application(db, user, application_id)
 
-    if application.status != ApplicationStatus.DRAFT:
+    editable_statuses = (
+        ApplicationStatus.DRAFT,
+        ApplicationStatus.SUBMITTED,
+        ApplicationStatus.ELIGIBILITY_CHECKED,
+        ApplicationStatus.OFFER_SELECTED,
+    )
+    if application.status not in editable_statuses:
         raise ConflictError(
             f"Cannot modify application in '{application.status.value}' state. "
-            "Only DRAFT applications may be updated."
+            "Applications under active underwriting review or approved/disbursed cannot be modified."
         )
 
-    # Update fields that were explicitly passed
+    # Detect if financial / eligibility-affecting fields changed
     update_data = data.model_dump(exclude_unset=True)
+    financial_fields = {
+        "requested_amount",
+        "monthly_income",
+        "existing_debt",
+        "requested_tenure_months",
+        "employment_type",
+    }
+    has_financial_change = any(
+        field in update_data and getattr(application, field) != update_data[field]
+        for field in financial_fields
+    )
+
     for field, value in update_data.items():
         setattr(application, field, value)
+
+    # If financial data changed and offers/eligibility were already generated, invalidate them
+    if has_financial_change and application.status in (
+        ApplicationStatus.ELIGIBILITY_CHECKED,
+        ApplicationStatus.OFFER_SELECTED,
+    ):
+        for offer in list(application.offers):
+            db.delete(offer)
+        for check in list(application.eligibility_checks):
+            db.delete(check)
+
+        # Reset application status to SUBMITTED so eligibility can be freshly evaluated
+        application.status = ApplicationStatus.SUBMITTED
 
     db.add(application)
     db.commit()
@@ -161,17 +193,18 @@ def submit_loan_application(
 ) -> LoanApplication:
     """
     Submit a loan application.
-    Enforces completeness validation and transitions status from DRAFT to SUBMITTED.
-    Idempotent: if already submitted, returns the submitted application without error.
+    Enforces completeness validation and transitions status to SUBMITTED.
+    Allows re-submission from DRAFT, SUBMITTED, ELIGIBILITY_CHECKED, or OFFER_SELECTED states.
     """
     application = get_loan_application(db, user, application_id)
 
-    # Idempotency check: if already submitted, return cleanly
-    if application.status == ApplicationStatus.SUBMITTED:
-        return application
-
-    # Only DRAFT can be submitted
-    if application.status != ApplicationStatus.DRAFT:
+    allowed_statuses = (
+        ApplicationStatus.DRAFT,
+        ApplicationStatus.SUBMITTED,
+        ApplicationStatus.ELIGIBILITY_CHECKED,
+        ApplicationStatus.OFFER_SELECTED,
+    )
+    if application.status not in allowed_statuses:
         raise ConflictError(
             f"Application cannot be submitted from '{application.status.value}' state."
         )
@@ -205,3 +238,32 @@ def submit_loan_application(
     db.refresh(application)
 
     return application
+
+
+def delete_loan_application(
+    db: Session,
+    user: User,
+    application_id: uuid.UUID,
+) -> dict:
+    """
+    Delete an editable loan application belonging to the authenticated customer.
+    Enforces ownership and protects irreversible / under review financial states.
+    """
+    application = get_loan_application(db, user, application_id)
+
+    protected_statuses = (
+        ApplicationStatus.UNDER_REVIEW,
+        ApplicationStatus.APPROVED,
+        ApplicationStatus.DISBURSEMENT_PROCESSING,
+        ApplicationStatus.DISBURSED,
+    )
+    if application.status in protected_statuses:
+        raise ConflictError(
+            f"Cannot delete application in '{application.status.value}' state. "
+            "Applications under active underwriting review or approved/disbursed cannot be deleted."
+        )
+
+    db.delete(application)
+    db.commit()
+
+    return {"message": "Loan application deleted successfully.", "id": str(application_id)}

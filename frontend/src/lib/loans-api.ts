@@ -52,3 +52,8 @@ export async function selectOffer(applicationId: string, offerId: string): Promi
   );
   return response.data;
 }
+
+export async function deleteApplication(id: string): Promise<{ message: string; id: string }> {
+  const response = await apiClient.delete<{ message: string; id: string }>(`/loans/applications/${id}`);
+  return response.data;
+}

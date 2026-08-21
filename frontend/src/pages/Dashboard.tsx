@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../lib/api-client';
 import { fetchApplications } from '../lib/loans-api';
@@ -19,6 +19,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [primaryDisbursement, setPrimaryDisbursement] = useState<DisbursementDetail | null>(null);
@@ -26,7 +27,9 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [resendingEmail, setResendingEmail] = useState<boolean>(false);
-  const [resendSuccess, setResendSuccess] = useState<string | null>(null);
+  const [resendSuccess, setResendSuccess] = useState<string | null>(
+    (location.state as any)?.notification || null
+  );
 
   const loadDashboardData = async () => {
     try {
